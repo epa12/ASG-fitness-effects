@@ -7,10 +7,10 @@ geometry: margin=2.54cm
 ---
 
 R Setup
-```{r}
+```{r setup}
 rm(list = ls())
+knitr::opts_knit$set(root.dir = "C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/")
 getwd()
-setwd("/cloud/project/biomass fitness assay/")
 
 #install.packages("tidyverse")
 require("png")
@@ -28,14 +28,20 @@ cv <- function(x) (sd(x)/mean(x))*100
 
 ```
 
-Load data
+Load and wrangle data
 ```{r}
-data<-read.csv("./20250211OD600.csv")
-design<-read.csv("./20250211OD600Design.csv", header=FALSE)
+#load data
+data<-read.csv("./data/20250211OD600.csv")
+design<-read.csv("./reference/20250211OD600Design.csv", header=FALSE)
 
 #subset design file, "wells" will be strain plus treatment but I can update design file to include a separate column for both
 media<-design[1:8,1:12]
 wells<-design[9:16,1:12]
+
+# Create custom labels
+rows <- LETTERS[1:8]  # A to H
+cols <- 1:12  # 1 to 12
+custom_labels <- unlist(lapply(rows, function(row) paste0(row, cols)))
 
 #convert to long
 media.long <- as.data.frame(pivot_longer(media, cols = everything(),
@@ -43,72 +49,205 @@ media.long <- as.data.frame(pivot_longer(media, cols = everything(),
 wells.long <- as.data.frame(pivot_longer(wells, cols = everything(),
                                          names_to = "Treatment", values_to = "Value"))
 
+# Replace the "Treatment" column values
+media.long<-media.long %>%
+    mutate(Treatment = custom_labels[1:n()])
+wells.long<-wells.long %>%
+    mutate(Treatment = custom_labels[1:n()])
+
+colnames(media.long)<-c("Well", "Media") #to rename every column
+colnames(wells.long)<-c("Well", "Treatment") #to rename every column
+
+
 # Prepare the OD data for merging
-
 OD.long <- data %>%
-  pivot_longer(cols = -Time..Hours., names_to = "Well", values_to = "OD600")
-#colnames(OD.long)
-OD.long$media<-rep(media.long$Value, 97)
-OD.long$wells<-rep(wells.long$Value, 97)
+  pivot_longer(cols = -Time..Hours., names_to="Well", values_to="OD600")
+str(OD.long)
 
-
-# Group by Time and Design, and calculate the mean per group
-summary <- OD.long %>%
-  group_by(Time..Hours., media, wells, interaction(media, wells)) %>%
-  summarize(OD600 = mean(OD600, na.rm = TRUE))
-summary <- summary %>%
-  rename(sample = `interaction(media, wells)`)
-#ffr: colnames(summary)<-c("allcolumnnames") to rename every column
-
-#still working on this to help draw out graphs by media and strain separately
-media.long[!apply(media.long, 1, function(row) any(row == "Blank")), ]
-wells.long[!apply(wells.long, 1, function(row) any(row == "Blank")), ]
-summary$media<-rep(media.long$Value, length.out=970)
-summary$wells<-rep(wells.long$Value, length.out=970)
+#combine
+OD.long$Media<-rep(media.long$Media, length.out=9312)
+OD.long$Treatment<-rep(wells.long$Treatment, length.out=9312)
 
 #filter out "Blanks" (what if I made them na and did na.omit, would that be easier?)
-summary <- summary[!apply(summary, 1, function(row) any(row == "Blank")), ]
-#something about this is not merging data correctly
+summary<-OD.long[!apply(OD.long, 1, function(row) any(row=="Blank")), ]
+
+#it worked!!
+```
+
+Process data (infected cells)
+```{r}
+#I need to create two vectors for each medium:
+##OD over time for wt during infection
+##OD over time for mut during infection
+#Then I need to take the mean of the wt replicates for each time point and repeat
+#I can subtract mut from wt(means) to get a number corresponding to "fitness"
+
+#Make a matrix that includes all infected 
+SPO1<-summary %>%
+  filter(grepl("SPO1", Treatment)) %>%
+  select(Time..Hours., OD600, Treatment, Media)
+#subset wt
+wt<-SPO1 %>%
+  filter(grepl("WT", Treatment)) %>%
+  select(Time..Hours., OD600, Treatment, Media)
+#separate DSM and LB
+wtLB<-wt %>%
+  filter(grepl("LB", Media)) %>%
+  select(Time..Hours., OD600)
+wtDSM<-wt %>%
+  filter(grepl("DSM", Media)) %>%
+  select(Time..Hours., OD600)
+#take averages
+wtLBmeans <- wtLB %>%
+  group_by(Time..Hours.) %>%
+  summarise(mean_OD600 = mean(OD600))
+wtDSMmeans <- wtDSM %>%
+  group_by(Time..Hours.) %>%
+  summarise(mean_OD600 = mean(OD600))
+# Repeat each row 4 times (n=4 in this specific exp)
+wtLBmeans <-wtLBmeans[rep(1:nrow(wtLBmeans), each = 4),]
+wtDSMmeans <- wtDSMmeans[rep(1:nrow(wtDSMmeans), each = 4),]
+
+#now SPOIIE
+SPOIIE<-SPO1 %>%
+  filter(grepl("SPOIIE", Treatment)) %>%
+  select(Time..Hours., OD600, Treatment, Media)
+#separate DSM and LB
+SPOIIELB<-SPOIIE %>%
+  filter(grepl("LB", Media)) %>%
+  select(Time..Hours., OD600)
+SPOIIEDSM<-SPOIIE %>%
+  filter(grepl("DSM", Media)) %>%
+  select(Time..Hours., OD600)
+
+#subract SPOIIE from WT and then take sum
+fitnessLB<-SPOIIELB-wtLBmeans
+fitnessLB<-print(sum(fitnessLB))
+
+
+fitnessDSM<-SPOIIEDSM-wtDSMmeans
+fitnessDSM<-print(sum(fitnessDSM))
+
+
+
+```
+Process data (noninfected cells)
+```{r}
+#I need to create two vectors for each medium:
+##OD over time for wt during infection
+##OD over time for mut during infection
+#Then I need to take the mean of the wt replicates for each time point and repeat
+#I can subtract mut from wt(means) to get a number corresponding to "fitness"
+
+#Make a matrix that includes all infected 
+noninf<-summary %>%
+  filter(!grepl("SPO1", Treatment)) %>%
+  select(Time..Hours., OD600, Treatment, Media)
+#subset wt
+n.wt<-noninf %>%
+  filter(grepl("WT", Treatment)) %>%
+  select(Time..Hours., OD600, Treatment, Media)
+#separate DSM and LB
+n.wtLB<-n.wt %>%
+  filter(grepl("LB", Media)) %>%
+  select(Time..Hours., OD600)
+n.wtDSM<-n.wt %>%
+  filter(grepl("DSM", Media)) %>%
+  select(Time..Hours., OD600)
+#take averages
+n.wtLBmeans <- n.wtLB %>%
+  group_by(Time..Hours.) %>%
+  summarise(mean_OD600 = mean(OD600))
+n.wtDSMmeans <- n.wtDSM %>%
+  group_by(Time..Hours.) %>%
+  summarise(mean_OD600 = mean(OD600))
+# Repeat each row 4 times (n=4 in this specific exp)
+n.wtLBmeans <-n.wtLBmeans[rep(1:nrow(n.wtLBmeans), each = 4),]
+n.wtDSMmeans <- n.wtDSMmeans[rep(1:nrow(n.wtDSMmeans), each = 4),]
+
+#now SPOIIE
+n.SPOIIE<-noninf %>%
+  filter(grepl("SPOIIE", Treatment)) %>%
+  select(Time..Hours., OD600, Treatment, Media)
+#separate DSM and LB
+n.SPOIIELB<-n.SPOIIE %>%
+  filter(grepl("LB", Media)) %>%
+  select(Time..Hours., OD600)
+n.SPOIIEDSM<-n.SPOIIE %>%
+  filter(grepl("DSM", Media)) %>%
+  select(Time..Hours., OD600)
+
+#subract SPOIIE from WT and then take sum
+n.fitnessLB<-n.SPOIIELB-n.wtLBmeans
+n.fitnessLB<-print(sum(n.fitnessLB))
+
+
+n.fitnessDSM<-n.SPOIIEDSM-n.wtDSMmeans
+n.fitnessDSM<-print(sum(n.fitnessDSM))
+
+
+
 ```
 
 Plot data
 ```{r}
+setwd('./output') #for ggsave
 plot.new()
 
 # Define plotting margins
 par(mar = c(7, 7, 5, 7))
 
+#vector of all the fitness values (Fitness effect of loss of gene)
+pm <-data.frame(
+  treatment_media = c("noninfectedLB", "noninfectedDSM", "infectedLB", "infectedDSM"),
+  fitness = c(n.fitnessLB, n.fitnessDSM, fitnessLB, fitnessDSM)
+)
+
+
+
+bg<-ggplot(pm, aes(x = treatment_media, y = fitness)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Fitness effects of sporulation mutations", x = "Treatment and Media", y = "Fitness") +
+  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")
+ggsave("20250211_fitness.png", plot = bg, width = 6, height = 4, dpi = 300)
+print(bg)
 
 # Plot all growth over time in one plot, colored by design
-p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = sample)) +
-  geom_line() +
-  theme_minimal() + #geom_smooth()+
-  labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.strain-treatment") +
-  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")+
-  facet_wrap(~sample)
-ggsave("20250211_all.png", plot = p, width = 6, height = 4, dpi = 300)
 
-m<-
-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = wells)) +
-  geom_point() +
-  theme_minimal() + #geom_smooth()+
-  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "strain-treatment") +
+p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Treatment, Media)))+
+  #geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.Strain-Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  facet_wrap(~media)
-ggsave("20250211_Media.png", plot = m, width = 12, height = 4, dpi = 300)
+  facet_wrap(~Treatment + Media)
+print(p)
+ggsave("20250211_all.png", plot = p, width = 12, height = 6, dpi = 300)
 
-d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = sample)) +
-  geom_line() +
-  theme_minimal() + #geom_smooth()+
-  labs(title = "OD600 over Time by Cell Type", x = "Time", y = "OD600", colour = "Media") +
+m<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Treatment))+
+  #geom_line() + 
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "Strain-Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  facet_wrap(~wells)
+  facet_wrap(~Media)
+print(m)
+ggsave("20250211_Media.png", plot = m, width = 16, height = 10, dpi = 300)
+
+d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Media)) +
+  #geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Cell Type and Treatment", x = "Time", y = "OD600", colour = "Media") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~Treatment)
+print(d)
 ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
 
-print(p)
-print(m)
-print(d)
-#aghhhhhh
+
 ```
 Results:
 >
+
+```{r}
+getwd()
+
+setwd('./datawrangling_code') 
+```
