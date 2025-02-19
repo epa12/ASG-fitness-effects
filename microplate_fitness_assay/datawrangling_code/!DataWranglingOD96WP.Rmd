@@ -9,7 +9,7 @@ geometry: margin=2.54cm
 R Setup
 ```{r setup}
 rm(list = ls())
-knitr::opts_knit$set(root.dir = "C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate fitness assay/")
+knitr::opts_knit$set(root.dir = "C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/")
 getwd()
 
 #install.packages("tidyverse")
@@ -121,12 +121,12 @@ SPOIIEDSM<-SPOIIE %>%
   select(Time..Hours., OD600)
 
 #subract SPOIIE from WT and then take sum
-fitnessLB<-wtLBmeans-SPOIIELB
-print(sum(fitnessLB))
+fitnessLB<-SPOIIELB-wtLBmeans
+fitnessLB<-print(sum(fitnessLB))
 
 
-fitnessDSM<-wtDSMmeans-SPOIIEDSM
-print(sum(fitnessDSM))
+fitnessDSM<-SPOIIEDSM-wtDSMmeans
+fitnessDSM<-print(sum(fitnessDSM))
 
 
 
@@ -178,12 +178,12 @@ n.SPOIIEDSM<-n.SPOIIE %>%
   select(Time..Hours., OD600)
 
 #subract SPOIIE from WT and then take sum
-n.fitnessLB<-n.wtLBmeans-n.SPOIIELB
-print(sum(n.fitnessLB))
+n.fitnessLB<-n.SPOIIELB-n.wtLBmeans
+n.fitnessLB<-print(sum(n.fitnessLB))
 
 
-n.fitnessDSM<-n.wtDSMmeans-n.SPOIIEDSM
-print(sum(n.fitnessDSM))
+n.fitnessDSM<-n.SPOIIEDSM-n.wtDSMmeans
+n.fitnessDSM<-print(sum(n.fitnessDSM))
 
 
 
@@ -191,57 +191,63 @@ print(sum(n.fitnessDSM))
 
 Plot data
 ```{r}
+setwd('./output') #for ggsave
 plot.new()
 
 # Define plotting margins
 par(mar = c(7, 7, 5, 7))
 
 #vector of all the fitness values (Fitness effect of loss of gene)
-pm<-data.frame(
-  category=c("noninfectedLB", "noninfectedDSM", "infected LB", "infected" ),
-  value=c(n.fitnessLB, n.fitnessDSM, fitnessLB, fitnessDSM)
+pm <-data.frame(
+  treatment_media = c("noninfectedLB", "noninfectedDSM", "infectedLB", "infectedDSM"),
+  fitness = c(n.fitnessLB, n.fitnessDSM, fitnessLB, fitnessDSM)
 )
 
 
-bg<-ggplot(pm, aes(x = category, y = value)) +
+
+bg<-ggplot(pm, aes(x = treatment_media, y = fitness)) +
   geom_bar(stat = "identity") +
-  labs(title = "Fitness effects of sporulation mutations", x = "Treatment ", y = "Value") +
-  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")+
-  facet_wrap(~sample)
+  labs(title = "Fitness effects of sporulation mutations", x = "Treatment and Media", y = "Fitness") +
+  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")
+ggsave("20250211_fitness.png", plot = bg, width = 6, height = 4, dpi = 300)
+print(bg)
 
 # Plot all growth over time in one plot, colored by design
 
-p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = treatment)) +
-  geom_line() +
-  theme_minimal() + #geom_smooth()+
-  labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.strain-treatment") +
-  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")+
-  facet_wrap(~sample)
-ggsave("20250211_all.png", plot = p, width = 14, height = 10, dpi = 300)
-
-
-
-m<-
-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = wells)) +
-  geom_point() +
-  theme_minimal() + #geom_smooth()+
-  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "strain-treatment") +
+p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Treatment, Media)))+
+  #geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.Strain-Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  facet_wrap(~media)
-ggsave("20250211_Media.png", plot = m, width = 12, height = 4, dpi = 300)
+  facet_wrap(~Treatment + Media)
+print(p)
+ggsave("20250211_all.png", plot = p, width = 12, height = 6, dpi = 300)
 
-d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = sample)) +
-  geom_line() +
-  theme_minimal() + #geom_smooth()+
-  labs(title = "OD600 over Time by Cell Type", x = "Time", y = "OD600", colour = "Media") +
+m<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Treatment))+
+  #geom_line() + 
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "Strain-Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  facet_wrap(~wells)
+  facet_wrap(~Media)
+print(m)
+ggsave("20250211_Media.png", plot = m, width = 16, height = 10, dpi = 300)
+
+d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Media)) +
+  #geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Cell Type and Treatment", x = "Time", y = "OD600", colour = "Media") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~Treatment)
+print(d)
 ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
 
-print(p)
-print(m)
-print(d)
-#aghhhhhh
+
 ```
 Results:
 >
+
+```{r}
+getwd()
+
+setwd('./datawrangling_code') 
+```
