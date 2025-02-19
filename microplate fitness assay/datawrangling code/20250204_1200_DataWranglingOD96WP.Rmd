@@ -1,0 +1,101 @@
+---
+title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+R Setup
+```{r}
+rm(list = ls())
+getwd()
+setwd("/cloud/project/biomass fitness assay/")
+
+#install.packages("tidyverse")
+require("png")
+require("dplyr")
+library("tidyverse")
+require("grid")
+require("tibble")
+require("knitr")
+require("extrafont")
+require("ggrepel");
+require("gridExtra")
+require("contrast")
+sem <- function(x) sqrt(var(x)/length(x))
+cv <- function(x) (sd(x)/mean(x))*100
+
+```
+
+Load data
+```{r}
+data<-read.csv("./20250204OD600.csv")
+design<-read.csv("./20250204OD600Design.csv", header=FALSE)
+#str(data)
+
+#subset design file, "wells" will be strain plus treatment but I can update design file to include a separate column for both
+media<-design[1:8,1:12]
+wells<-design[9:16,1:12]
+
+#convert to long
+media.long <- as.data.frame(pivot_longer(media, cols = everything(),
+                                         names_to = "Treatment", values_to = "Value"))
+wells.long <- as.data.frame(pivot_longer(wells, cols = everything(),
+                                         names_to = "Treatment", values_to = "Value"))
+
+# create vector of column numbers--what's the purpose of this?
+#col.vect <- seq(1, 96)
+
+# Prepare the OD data for merging
+OD.long <- data %>%
+  pivot_longer(cols = -Time..Hours., names_to = "Well", values_to = "OD600")
+#colnames(OD.long)
+OD.long$media<-rep(media.long$Value, length.out=18528)
+OD.long$wells<-rep(wells.long$Value, length.out=18528)
+
+#Filter Blank wells
+OD.long <- OD.long[!apply(OD.long, 1, function(row) any(row == "Blank")), ]
+
+#Disregard: Combine replicates
+#For LB only
+#even_rows <- seq(2, 776, by = 2)
+#LB<-OD.long[even_rows, ]
+
+#DSM only
+#odd_rows<-seq(1, 775, by=2)
+#DSM<-OD.long[odd_rows,]
+
+
+# Group by Time and Design, and calculate the mean per group
+summary <- OD.long %>%
+  group_by(Time..Hours., media, wells, interaction(media, wells)) %>%
+  summarize(OD600 = mean(OD600, na.rm = TRUE))
+summary <- summary %>%
+  rename(sample = `interaction(media, wells)`)
+#ffr: colnames(summary)<-c("allcolumnnames") to rename every column
+
+#still working on this to help draw out graphs by media and strain separately
+#summary$media<-OD.long$media
+#summary$strain<-rep(media.long$Value, length.out=970)
+```
+
+Plot data
+```{r}
+plot.new()
+
+# Define plotting margins
+par(mar = c(7, 7, 5, 7))
+
+
+# Plot all fluorescence over time in one plot, colored by Design
+ggplot(summary, aes(x = Time..Hours., y = OD600, colour = sample)) +
+  geom_line() +
+  theme_minimal() + #geom_smooth()+
+  labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.strain-treatment") +
+  theme(legend.position = "right")+
+  facet_wrap(~sample)
+
+
+#aghhhhhh
+```

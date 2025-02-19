@@ -1,0 +1,114 @@
+---
+title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+R Setup
+```{r}
+rm(list = ls())
+getwd()
+setwd("/cloud/project/biomass fitness assay/")
+
+#install.packages("tidyverse")
+require("png")
+require("dplyr")
+library("tidyverse")
+require("grid")
+require("tibble")
+require("knitr")
+require("extrafont")
+require("ggrepel");
+require("gridExtra")
+require("contrast")
+sem <- function(x) sqrt(var(x)/length(x))
+cv <- function(x) (sd(x)/mean(x))*100
+
+```
+
+Load data
+```{r}
+data<-read.csv("./20250211OD600.csv")
+design<-read.csv("./20250211OD600Design.csv", header=FALSE)
+
+#subset design file, "wells" will be strain plus treatment but I can update design file to include a separate column for both
+media<-design[1:8,1:12]
+wells<-design[9:16,1:12]
+
+#convert to long
+media.long <- as.data.frame(pivot_longer(media, cols = everything(),
+                                         names_to = "Treatment", values_to = "Value"))
+wells.long <- as.data.frame(pivot_longer(wells, cols = everything(),
+                                         names_to = "Treatment", values_to = "Value"))
+
+# Prepare the OD data for merging
+
+OD.long <- data %>%
+  pivot_longer(cols = -Time..Hours., names_to = "Well", values_to = "OD600")
+#colnames(OD.long)
+OD.long$media<-rep(media.long$Value, 97)
+OD.long$wells<-rep(wells.long$Value, 97)
+
+
+# Group by Time and Design, and calculate the mean per group
+summary <- OD.long %>%
+  group_by(Time..Hours., media, wells, interaction(media, wells)) %>%
+  summarize(OD600 = mean(OD600, na.rm = TRUE))
+summary <- summary %>%
+  rename(sample = `interaction(media, wells)`)
+#ffr: colnames(summary)<-c("allcolumnnames") to rename every column
+
+#still working on this to help draw out graphs by media and strain separately
+media.long[!apply(media.long, 1, function(row) any(row == "Blank")), ]
+wells.long[!apply(wells.long, 1, function(row) any(row == "Blank")), ]
+summary$media<-rep(media.long$Value, length.out=970)
+summary$wells<-rep(wells.long$Value, length.out=970)
+
+#filter out "Blanks" (what if I made them na and did na.omit, would that be easier?)
+summary <- summary[!apply(summary, 1, function(row) any(row == "Blank")), ]
+#something about this is not merging data correctly
+```
+
+Plot data
+```{r}
+plot.new()
+
+# Define plotting margins
+par(mar = c(7, 7, 5, 7))
+
+
+# Plot all growth over time in one plot, colored by design
+p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = sample)) +
+  geom_line() +
+  theme_minimal() + #geom_smooth()+
+  labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.strain-treatment") +
+  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")+
+  facet_wrap(~sample)
+ggsave("20250211_all.png", plot = p, width = 6, height = 4, dpi = 300)
+
+m<-
+ggplot(summary, aes(x = Time..Hours., y = OD600, colour = wells)) +
+  geom_point() +
+  theme_minimal() + #geom_smooth()+
+  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "strain-treatment") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~media)
+ggsave("20250211_Media.png", plot = m, width = 12, height = 4, dpi = 300)
+
+d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = sample)) +
+  geom_line() +
+  theme_minimal() + #geom_smooth()+
+  labs(title = "OD600 over Time by Cell Type", x = "Time", y = "OD600", colour = "Media") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~wells)
+ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
+
+print(p)
+print(m)
+print(d)
+#aghhhhhh
+```
+Results:
+>
