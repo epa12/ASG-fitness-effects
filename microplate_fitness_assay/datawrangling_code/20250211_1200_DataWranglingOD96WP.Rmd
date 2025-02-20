@@ -184,9 +184,16 @@ n.fitnessLB<-print(sum(n.fitnessLB))
 
 n.fitnessDSM<-n.SPOIIEDSM-n.wtDSMmeans
 n.fitnessDSM<-print(sum(n.fitnessDSM))
+```
 
+Add Strain and Infection columns
+```{r}
 
-
+summary <- summary %>%
+  filter(Treatment != "Ctrl") %>%
+  mutate(SPO1_Presence = ifelse(grepl("SPO1", Treatment), "SPO1 Present", "SPO1 Absent"))
+summary <- summary %>%
+  mutate(Strain = ifelse(grepl("WT", Treatment), "WT", "SPOIIE"))
 ```
 
 Plot data
@@ -213,9 +220,8 @@ ggsave("20250211_fitness.png", plot = bg, width = 6, height = 4, dpi = 300)
 print(bg)
 
 # Plot all growth over time in one plot, colored by design
-
 p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Treatment, Media)))+
-  #geom_line() +
+  geom_line() +
   theme_minimal() + geom_smooth()+
   labs(title = "OD600 over Time by Media + Cell Type", x = "Time", y = "OD600", colour = "Media.Strain-Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
@@ -223,6 +229,7 @@ p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Treatme
 print(p)
 ggsave("20250211_all.png", plot = p, width = 12, height = 6, dpi = 300)
 
+#plot and sort by Media
 m<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Treatment))+
   #geom_line() + 
   theme_minimal() + geom_smooth()+
@@ -232,6 +239,7 @@ m<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Treatment))+
 print(m)
 ggsave("20250211_Media.png", plot = m, width = 16, height = 10, dpi = 300)
 
+#plot and sort by treatment
 d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Media)) +
   #geom_line() +
   theme_minimal() + geom_smooth()+
@@ -241,13 +249,16 @@ d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Media)) +
 print(d)
 ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
 
+#plot and sort by infection
+s <- ggplot(summary, aes(x = Time..Hours., y = OD600, colour = Strain)) +
+  theme_minimal() + 
+  geom_line() +
+  labs(title = "OD600 over Time by Cell Type and Treatment", x = "Time", y = "OD600", colour = "Strain") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right") +
+  facet_wrap(~SPO1_Presence + Media)
+print(s)
+
 
 ```
 Results:
 >
-
-```{r}
-getwd()
-
-setwd('./datawrangling_code') 
-```
