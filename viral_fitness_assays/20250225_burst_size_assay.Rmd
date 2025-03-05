@@ -1,0 +1,37 @@
+title: 'Data analysis from Burst size assay'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+
+
+
+#To calculate burst size:
+
+>a.	First calculate the number of initially infected cells Ni = (early timepoint titer BEFORE chloroform treatment) - (early timepoint titer AFTER chloroform treatment). Chloroform treatment before end of the eclipse period results in non-viable infections, so only free phage are counted. Because phages are limited to single infections (by large excess of host cells), number of infected cells is just the total infective centers minus free phages.
+
+>b.	Burst size = (average titer of free phages at late timepoints) / Ni
+
+
+```{r}
+#create vector
+time <- c(5, 10, 20, 30, 40, 50, 60)
+values <- c(20400, 50000, 28900, 35000, 113000, 225000, 420000)
+
+# Combine the vectors into a matrix
+SPO1.bsa <- matrix(c(time, values), ncol = 2, byrow = FALSE)
+
+# Add column names for clarity
+colnames(SPO1.bsa) <- c("Time", "Titer")
+
+#plot
+# Convert the matrix to a data frame for plotting
+SPO1.bsa_df <- as.data.frame(SPO1.bsa)
+
+# Plot the values over time
+lp <- ggplot(SPO1.bsa_df, aes(x = Time, y = Titer)) +
+  geom_line(color = "blue") +
+  labs(title = "Burst Size Assay of SPO1", x = "Time(min)", y = "Viral Titer (PFU/mL)") +
+  theme_minimal()
+ggsave("20250225_burst size assay.png", plot = lp, width = 6, height = 4, dpi = 300)
+```

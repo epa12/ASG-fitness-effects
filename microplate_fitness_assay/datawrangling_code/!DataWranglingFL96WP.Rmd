@@ -54,19 +54,19 @@ stn.long <- as.data.frame(pivot_longer(strain, cols = everything(),
 inf.long <- as.data.frame(pivot_longer(infection, cols = everything(),
                                          names_to = "Well", values_to = "Infection"))
 
-# Prepare the OD data for merging
-OD.long <- data %>%
-  pivot_longer(cols = -Time..Hours., names_to="Well", values_to="OD600")
-str(OD.long)
+# Prepare the FL data for merging
+FL.long <- data %>%
+  pivot_longer(cols = -Time..Hours., names_to="Well", values_to="Fluorescence")
+str(FL.long)
 
 #combine
-OD.long$Media<-rep(med.long$Media, length.out=9312)
-OD.long$Strain<-rep(stn.long$Strain, length.out=9312)
-OD.long$Infection<-rep(inf.long$Infection, length.out=9312)
+FL.long$Media<-rep(med.long$Media, length.out=9312)
+FL.long$Strain<-rep(stn.long$Strain, length.out=9312)
+FL.long$Infection<-rep(inf.long$Infection, length.out=9312)
 
 
 #filter out "Blanks" 
-summary<-OD.long[!apply(OD.long, 1, function(row) any(row=="Blank")), ]
+summary<-FL.long[!apply(FL.long, 1, function(row) any(row=="Blank")), ]
 
 #it worked!!
 ```
@@ -76,39 +76,39 @@ Calculate fitness
 #subset wt
 wt<-summary %>%
   filter(grepl("WT", Strain)) %>%
-  select(Time..Hours., OD600, Media, Infection)
+  select(Time..Hours., Fluorescence, Media, Infection)
 #separate by media and infection (ctrl)
 wtLB<-wt %>%
   filter(grepl("LB", Media)) %>%
   filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 wtDSM<-wt %>%
   filter(grepl("DSM", Media)) %>%
   filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 #separate by media and infection (SPO1)
 wtlbSPO1<-wt %>%
   filter(grepl("LB", Media)) %>%
   filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 wtdsmSPO1<-wt %>%
   filter(grepl("DSM", Media)) %>%
   filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 
 #take averages
 wtLBmeans <- wtLB %>%
   group_by(Time..Hours.) %>%
-  summarise(mean_OD600 = mean(OD600))
+  summarise(mean_Fluorescence = mean(Fluorescence))
 wtDSMmeans <- wtDSM %>%
   group_by(Time..Hours.) %>%
-  summarise(mean_OD600 = mean(OD600))
+  summarise(mean_Fluorescence = mean(Fluorescence))
 wtlbSPO1means <- wtlbSPO1 %>%
   group_by(Time..Hours.) %>%
-  summarise(mean_OD600 = mean(OD600))
+  summarise(mean_Fluorescence = mean(Fluorescence))
 wtdsmSPO1means <- wtdsmSPO1 %>%
   group_by(Time..Hours.) %>%
-  summarise(mean_OD600 = mean(OD600))
+  summarise(mean_Fluorescence = mean(Fluorescence))
 
 # Repeat each row n times (n=4 in this specific exp)
 wtLBmeans <-wtLBmeans[rep(1:nrow(wtLBmeans), each = 4),]
@@ -119,26 +119,30 @@ wtdsmSPO1means <- wtdsmSPO1means[rep(1:nrow(wtdsmSPO1means), each = 4),]
 #now SPOIIE
 SPOIIE<-summary %>%
   filter(grepl("SPOIIE", Strain)) %>%
-  select(Time..Hours., OD600, Media, Infection)
+  select(Time..Hours., Fluorescence, Media, Infection)
 #separate by media and infection (ctrl)
 SPOIIELB<-SPOIIE %>%
   filter(grepl("LB", Media)) %>%
   filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 SPOIIEDSM<-SPOIIE %>%
   filter(grepl("DSM", Media)) %>%
   filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 #separate by media and infection (SPO1)
 SPOIIElbSPO1<-SPOIIE %>%
   filter(grepl("LB", Media)) %>%
   filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 SPOIIEdsmSPO1<-SPOIIE %>%
   filter(grepl("DSM", Media)) %>%
   filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
+  select(Time..Hours., Fluorescence)
 
+
+print(done)
+```
+If using Fluor to calc fitness
 #subract SPOIIE from WT and then take sum
 fLB<-(SPOIIELB-wtLBmeans)
 fitnessLB<-sum(fLB)
@@ -150,24 +154,11 @@ fitnessDSM<-sum(fDSM)
 fdsmSPO1<-SPOIIEdsmSPO1-wtdsmSPO1means
 fitnessdsmSPO1<-sum(fdsmSPO1)
 
-print(done)
-```
-
-
-Plot data
-```{r}
-
-setwd('C:\Users\parke\OneDrive - Indiana University\GitHub\ASG-fitness-effects\microplate_fitness_assay\output') #for ggsave
-
 #vector of all the fitness values (Fitness effect of loss of gene)
 pm <-data.frame(
   treatment_media = c("noninfectedLB", "noninfectedDSM", "infectedLB", "infectedDSM"),
   fitness = c(fitnessLB, fitnessDSM, fitnesslbSPO1, fitnessdsmSPO1)
 )
-
-#plot
-plot.new()
-par(mar = c(7, 7, 5, 7))
 
 #fitnessbg
 bg<-ggplot(pm, aes(x = treatment_media, y = fitness)) +
@@ -177,41 +168,51 @@ bg<-ggplot(pm, aes(x = treatment_media, y = fitness)) +
 ggsave("20250211_fitness.png", plot = bg, width = 6, height = 4, dpi = 300)
 print(bg)
 
+Plot data
+```{r}
+
+setwd('C:\Users\parke\OneDrive - Indiana University\GitHub\ASG-fitness-effects\microplate_fitness_assay\output') #for ggsave
+
+
+#plot
+plot.new()
+par(mar = c(7, 7, 5, 7))
+
 # Plot all growth over time in one plot, colored by design
-p<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Strain, Media, Infection)))+
+p<-ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Strain, Media, Infection)))+
   geom_line() +
   theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time for All Samples", x = "Time", y = "OD600", colour = "Media.Strain.Treatment") +
+  labs(title = "Fluorescence over Time for All Samples", x = "Time", y = "Fluorescence", colour = "Media.Strain.Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
   facet_wrap(~Strain + Media + Infection)
 ggsave("20250211_all.png", plot = p, width = 10, height = 6, dpi = 300)
 print(p)
 
 #plot and sort by Media
-m<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Strain, Infection)))+
+m<-ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Strain, Infection)))+
   #geom_line() + 
   theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "Strain.Treatment") +
+  labs(title = "Fluorescence over Time by Media", x = "Time", y = "Fluorescence", colour = "Strain.Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
   facet_wrap(~Media)
 ggsave("20250211_Media.png", plot = m, width = 8, height = 5, dpi = 300)
 print(m)
 
 #plot and sort by treatment
-d<-ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Media, Infection))) +
+d<-ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Media, Infection))) +
   #geom_line() +
   theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time by Strain", x = "Time", y = "OD600", colour = "Media.Infection") +
+  labs(title = "Fluorescence over Time by Strain", x = "Time", y = "Fluorescence", colour = "Media.Infection") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
   facet_wrap(~Strain)
 ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
 print(d)
 
 #plot and sort by infection
-s <- ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Strain, Media))) +
+s <- ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Strain, Media))) +
   theme_minimal() + 
   geom_smooth() +
-  labs(title = "OD600 over Time by Treatment", x = "Time", y = "OD600", colour = "Strain") +
+  labs(title = "Fluorescence over Time by Treatment", x = "Time", y = "Fluorescence", colour = "Strain") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right") +
   facet_wrap(~Infection)
 
