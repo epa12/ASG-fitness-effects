@@ -1,5 +1,5 @@
 ---
-title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
+title: 'Wrangling Data from microplate fluorescence  curve in 96WP'
 author: "El Park"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: pdf_document
@@ -9,8 +9,8 @@ geometry: margin=2.54cm
 R Setup
 ```{r setup}
 rm(list = ls())
-setwd("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/output")
-knitr::opts_knit$set(root.dir = "C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/output")
+setwd("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay")
+knitr::opts_knit$set(root.dir = "C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/")
 getwd()
 
 #install.packages("tidyverse")
@@ -30,11 +30,10 @@ cv <- function(x) (sd(x)/mean(x))*100
 ```
 
 Load and wrangle data
-Change file names
 ```{r}
 #load data
-data<-read.csv("../data/20250228OD600.csv")
-design<-read.csv("../reference/20250228OD600Design.csv", header=FALSE)
+data<-read.csv("./data/20250211fluor.csv")
+design<-read.csv("./reference/20250211fluorDesign.csv", header=FALSE)
 
 #subset design file, "wells" will be strain plus treatment but I can update design file to include a separate column for both
 media<-design[1:8,1:12]
@@ -55,19 +54,19 @@ stn.long <- as.data.frame(pivot_longer(strain, cols = everything(),
 inf.long <- as.data.frame(pivot_longer(infection, cols = everything(),
                                          names_to = "Well", values_to = "Infection"))
 
-# Prepare the OD data for merging
-OD.long <- data %>%
-  pivot_longer(cols = -Time, names_to="Well", values_to="OD600")
-str(OD.long)
+# Prepare the FL data for merging
+FL.long <- data %>%
+  pivot_longer(cols = -Time, names_to="Well", values_to="fluor")
+str(FL.long)
 
 #combine
-OD.long$Media<-rep(med.long$Media, length.out=nrow(OD.long))
-OD.long$Strain<-rep(stn.long$Strain, length.out=nrow(OD.long))
-OD.long$Infection<-rep(inf.long$Infection, length.out=nrow(OD.long))
+FL.long$Media<-rep(med.long$Media, length.out=9312)
+FL.long$Strain<-rep(stn.long$Strain, length.out=9312)
+FL.long$Infection<-rep(inf.long$Infection, length.out=9312)
 
 
 #filter out "Blanks" 
-summary<-OD.long[!apply(OD.long, 1, function(row) any(row=="Blank")), ]
+summary<-FL.long[!apply(FL.long, 1, function(row) any(row=="Blank")), ]
 
 #it worked!!
 ```
@@ -87,10 +86,10 @@ for (i in 1:nrow(combinations)) {
   vector_name <- paste(strain, media, infection, sep = ".")
   assign(vector_name, summary %>%
     filter(Strain == strain, Media == media, Infection == infection) %>%
-    select(Time, OD600))
+    select(Time, fluor))
 }
 
-# Calculate the average OD600 for each time point for wt strains
+# Calculate the average fluor for each time point for wt strains
 wt_combinations <- combinations %>%
   filter(grepl("WT", Strain))
 
@@ -103,8 +102,8 @@ for (i in 1:nrow(wt_combinations)) {
   
   avg_vector <- get(wt_vector_name) %>%
     group_by(Time) %>%
-    mutate(avg_OD600 = mean(OD600, na.rm = TRUE)) %>%
-    ungroup()
+    summarise(avg_fluor = mean(fluor, na.rm = TRUE)) %>%
+    mutate(avg_fluor = avg_fluor * 3)
   
   assign(avg_vector_name, avg_vector)
 }
@@ -124,7 +123,7 @@ for (i in 1:nrow(non_wt_combinations)) {
   avg_vector_name <- paste("avg", media, infection, sep = ".")
   fitness_vector_name <- paste(media, strain, infection, "fitness", sep = ".")
   
-  fitness_vector <- get(non_wt_vector_name)$OD600 - get(avg_vector_name)$avg_OD600
+  fitness_vector <- get(non_wt_vector_name)$fluor - get(avg_vector_name)$avg_fluor
   
   assign(fitness_vector_name, fitness_vector)
   fitness_list[[fitness_vector_name]] <- fitness_vector
@@ -154,66 +153,70 @@ pm$media.strain.infection <- paste(pm$media, pm$strain, pm$infection, sep = ".")
 
 # Plot fitness
 plot.new()
-bg<- ggplot(pm, aes(x = media.strain.infection, y = fitness_value)) +
+bg <- ggplot(pm, aes(x = media.strain.infection, y = fitness_value)) +
   geom_bar(stat = "identity") +
-  labs(title = "Fitness effects of sporulation mutations", x = "Media.Strain.Infection", y = "Fitness") +
+  labs(title = "Viral fitness effects of host mutations", x = "Media.Strain.Infection", y = "Fitness") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8), # Rotate and adjust size of x-axis labels
         legend.key.size = unit(1, 'cm'), 
         legend.position = "right") +
   scale_y_continuous(breaks = c(pretty(pm$fitness_value), 300)) # Add tick mark at 500
-ggsave("20250228_fitness.png", plot = bg, width = 12, height = 8, dpi = 300)
 print(bg)
+
 ```
-
-
 
 
 
 Plot data
 ```{r}
+
+setwd('C:\Users\parke\OneDrive - Indiana University\GitHub\ASG-fitness-effects\microplate_fitness_assay\output') #for ggsave
+
+
 #plot
 plot.new()
 par(mar = c(7, 7, 5, 7))
 
 # Plot all growth over time in one plot, colored by design
-#p<-ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Media, Infection)))+
-  #geom_line() +
-  #theme_minimal() + geom_smooth()+
-  #labs(title = "OD600 over Time for All Samples", x = "Time", y = "OD600", colour = "Media.Strain.Treatment") +
-  #theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  #facet_wrap(~Strain + Media + Infection)
-#ggsave("20250228_all.png", plot = p, width = 10, height = 6, dpi = 300)
-#print(p)
+p<-ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Strain, Media, Infection)))+
+  geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "Fluorescence over Time for All Samples", x = "Time", y = "Fluorescence", colour = "Media.Strain.Treatment") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~Strain + Media + Infection)
+ggsave("20250211_all.png", plot = p, width = 10, height = 6, dpi = 300)
+print(p)
 
 #plot and sort by Media
-m<-ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Infection)))+
+m<-ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Strain, Infection)))+
   #geom_line() + 
   theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "Strain.Treatment") +
+  labs(title = "Fluorescence over Time by Media", x = "Time", y = "Fluorescence", colour = "Strain.Treatment") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
   facet_wrap(~Media)
-ggsave("20250228_Media.png", plot = m, width = 8, height = 5, dpi = 300)
+ggsave("20250211_Media.png", plot = m, width = 8, height = 5, dpi = 300)
 print(m)
 
 #plot and sort by treatment
-d<-ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Media, Infection))) +
+d<-ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Media, Infection))) +
   #geom_line() +
   theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time by Strain", x = "Time", y = "OD600", colour = "Media.Infection") +
+  labs(title = "Fluorescence over Time by Strain", x = "Time", y = "Fluorescence", colour = "Media.Infection") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
   facet_wrap(~Strain)
-ggsave("20250228_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
+ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
 print(d)
 
 #plot and sort by infection
-s <- ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Media))) +
+s <- ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Strain, Media))) +
   theme_minimal() + 
   geom_smooth() +
-  labs(title = "OD600 over Time by Treatment", x = "Time", y = "OD600", colour = "Strain") +
+  labs(title = "Fluorescence over Time by Treatment", x = "Time", y = "Fluorescence", colour = "Strain") +
   theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right") +
   facet_wrap(~Infection)
-ggsave("20250228_Infection.png", plot = s, width = 6, height = 4, dpi = 300)
+
 print(s)
+print()
+
 ```
 Results:
 >
