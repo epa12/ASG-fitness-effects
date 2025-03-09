@@ -12,6 +12,7 @@ rm(list = ls())
 setwd("./")
 getwd()
 
+#install.packages("vegan")
 #install.packages("tidyverse")
 require("png")
 require("dplyr")
@@ -23,6 +24,7 @@ require("extrafont")
 require("ggrepel");
 require("gridExtra")
 require("contrast")
+require("vegan")
 sem <- function(x) sqrt(var(x)/length(x))
 cv <- function(x) (sd(x)/mean(x))*100
 
@@ -52,11 +54,8 @@ stn.long <- as.data.frame(pivot_longer(strain, cols = everything(),
                                          names_to = "Well", values_to = "Strain"))
 inf.long <- as.data.frame(pivot_longer(infection, cols = everything(),
                                          names_to = "Well", values_to = "Infection"))
-
-# Prepare the OD data for merging
 OD.long <- data %>%
   pivot_longer(cols = -Time, names_to="Well", values_to="OD600")
-str(OD.long)
 
 #combine
 OD.long$Media<-rep(med.long$Media, length.out=55392)
@@ -67,16 +66,15 @@ OD.long$Infection<-rep(inf.long$Infection, length.out=55392)
 #filter out "Blanks" 
 summary<-OD.long[!apply(OD.long, 1, function(row) any(row=="Blank")), ]
 
-#it worked!!
 ```
 
 Calculate fitness
 ```{r}
-# Get unique combinations of Media, Infection, and Strain
+#get unique combinations of Media, Infection, and Strain
 combinations <- summary %>%
   distinct(Media, Infection, Strain)
 
-# Create data frames for each combination
+#create data frames for each combination
 for (i in 1:nrow(combinations)) {
   strain <- combinations$Strain[i]
   media <- combinations$Media[i]
@@ -88,7 +86,8 @@ for (i in 1:nrow(combinations)) {
     select(Time, OD600))
 }
 
-# Calculate the average OD600 for each time point for wt strains
+#Calculate the average OD600 for each time point for wt strains
+#allows us to obtain "fitness" values without unnecessarily creating power
 wt_combinations <- combinations %>%
   filter(grepl("WT", Strain))
 
@@ -101,13 +100,13 @@ for (i in 1:nrow(wt_combinations)) {
   
   avg_vector <- get(wt_vector_name) %>%
     group_by(Time) %>%
-    summarise(avg_OD600 = mean(OD600, na.rm = TRUE)) %>%
-    mutate(avg_OD600 = avg_OD600 * 3)
+    mutate(avg_OD600 = mean(OD600, na.rm = TRUE)) %>%
+    ungroup()
   
   assign(avg_vector_name, avg_vector)
 }
 
-# Ensure non_wt_combinations is created correctly
+#get OD values of non wt combinations, subtract from corresponding wt OD avg, then take a sum of each vector (this if the fitness value)
 non_wt_combinations <- combinations %>%
   filter(!grepl("WT", Strain))
 
@@ -159,145 +158,110 @@ bg <- ggplot(pm, aes(x = media.strain.infection, y = fitness_value)) +
         legend.key.size = unit(1, 'cm'), 
         legend.position = "right") +
   scale_y_continuous(breaks = c(pretty(pm$fitness_value), 300)) # Add tick mark at 500
+ggsave("20250228_fitness.png", plot = bg, width = 10, height = 12, dpi = 300)
 print(bg)
 
+#visualize OD sums of WT
+wt_ft_list <- list()
+
+for (i in 1:nrow(wt_combinations)) {
+  media <- wt_combinations$Media[i]
+  infection <- wt_combinations$Infection[i]
+  
+  wt_vector_name <- paste("WT", media, infection, sep = ".")
+  
+  sum_vector <- get(wt_vector_name) %>%
+    group_by(Time) %>%
+    summarise(sum_OD600 = sum(OD600, na.rm = TRUE)) %>%
+    ungroup()
+  
+  wt_ft_list[[wt_vector_name]] <- sum_vector
+}
+
+# Sum all OD600 values into one data frame named wt.ft
+wt.ft <- data.frame(
+  media = character(),
+  infection = character(),
+  sum_OD600 = numeric()
+)
+
+for (name in names(wt_ft_list)) {
+  parts <- strsplit(name, "\\.")[[1]]
+  media <- parts[2]
+  infection <- parts[3]
+  sum_OD600 <- sum(wt_ft_list[[name]]$sum_OD600)
+  
+  wt.ft <- rbind(wt.ft, data.frame(media = media, infection = infection, sum_OD600 = sum_OD600))
+}
+
+# Plot the sum of OD600 values
+wtfit<-ggplot(wt.ft, aes(x = interaction(media, infection), y = sum_OD600)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Sum of OD600 Values for WT Strains",
+       x = "Media and Infection",
+       y = "Sum of OD600") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8), # Rotate and adjust size of x-axis labels
+        legend.key.size = unit(1, 'cm'), 
+        legend.position = "right") +
+  scale_y_continuous(breaks = pretty(wt.ft$sum_OD600))
+ggsave("20250228_wtfitness.png", plot = wtfit, width = 10, height = 6, dpi = 300)
+print(wtfit)
 ```
 
 
-#subset wt
-wt<-summary %>%
-  filter(grepl("WT", Strain)) %>%
-  select(Time, OD600, Media, Infection)
-#separate by media and infection (ctrl)
-wtLB<-wt %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time, OD600)
-wtDSM<-wt %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time, OD600)
-#separate by media and infection (SPO1)
-wtlbSPO1<-wt %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time, OD600)
-wtdsmSPO1<-wt %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time, OD600)
 
-#separate by media and infection (sspSPO1)
-wtlbsspSPO1<-wt %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("sspSPO1", Infection)) %>%
-  select(Time, OD600)
-wtdsmsspSPO1<-wt %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("sspSPO1", Infection)) %>%
-  select(Time, OD600)
+Results/Interpretations:
 
-#separate by media and infection (SPP1)
-wtlbSPP1<-wt %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPP1", Infection)) %>%
-  select(Time, OD600)
-wtdsmSPP1<-wt %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPP1", Infection)) %>%
-  select(Time, OD600)
+Media-Maybe a linear regression?
 
-#take averages
-wtLBmeans <- wtLB %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtDSMmeans <- wtDSM %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtlbSPO1means <- wtlbSPO1 %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtdsmSPO1means <- wtdsmSPO1 %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtlbsspSPO1means <- wtlbSPO1 %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtdsmsspSPO1means <- wtdsmSPO1 %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtlbSPP1means <- wtlbSPO1 %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
-wtdsmSPP1means <- wtdsmSPO1 %>%
-  group_by(Time) %>%
-  summarise(mean_OD600 = mean(OD600))
+>DSM: 8 samples had an increase in fitness, 4 samples had a decrease. Out of the increases, half of them were moderately increased (>200); out of the decreases, 3 out of 4 were moderately decreased.
 
-# Repeat each row n times (n=4 in this specific exp)
-wtLBmeans <-wtLBmeans[rep(1:nrow(wtLBmeans), each = 4),]
-wtDSMmeans <- wtDSMmeans[rep(1:nrow(wtDSMmeans), each = 4),]
-wtlbSPO1means <-wtlbSPO1means[rep(1:nrow(wtlbSPO1means), each = 4),]
-wtdsmSPO1means <- wtdsmSPO1means[rep(1:nrow(wtdsmSPO1means), each = 4),]
-wtlbsspSPO1means <-wtlbsspSPO1means[rep(1:nrow(wtlbsspSPO1means), each = 4),]
-wtdsmsspSPO1means <- wtdsmsspSPO1means[rep(1:nrow(wtdsmsspSPO1means), each = 4),]
-wtlbSPP1means <-wtlbSPP1means[rep(1:nrow(wtlbSPP1means), each = 4),]
-wtdsmSPP1means <- wtdsmSPP1means[rep(1:nrow(wtdsmSPP1means), each = 4),]
+>LB: 3 samples had an increase in fitness, 9 had a decrease. Out of the increases, all were moderately increased; out of the decreases, 6 were moderately decreased.
 
-#now SPOIIE
-SPOIIE<-summary %>%
-  filter(grepl("SPOIIE", Strain)) %>%
-  select(Time..Hours., OD600, Media, Infection)
-#separate by media and infection (ctrl)
-SPOIIELB<-SPOIIE %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., OD600)
-SPOIIEDSM<-SPOIIE %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., OD600)
-#separate by media and infection (SPO1)
-SPOIIElbSPO1<-SPOIIE %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
-SPOIIEdsmSPO1<-SPOIIE %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
-#separate by media and infection (SPO1)
-SPOIIElbSPO1<-SPOIIE %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
-SPOIIEdsmSPO1<-SPOIIE %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., OD600)
-#separate by media and infection (SPO1)
-SPOIIElbSPP1<-SPOIIE %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPP1", Infection)) %>%
-  select(Time..Hours., OD600)
-SPOIIEdsmSPP1<-SPOIIE %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPP1", Infection)) %>%
-  select(Time, OD600)
+>Results/Interpretations: Something about DSM increases survivability of mutants? Or maybe this could be due to occlusion of wells from lysis?
 
 
-#subract SPOIIE from WT and then take sum
-fLB<-(SPOIIELB-wtLBmeans)
-fitnessLB<-sum(fLB)
-flbSPO1<-(SPOIIElbSPO1-wtlbSPO1means)
-fitnesslbSPO1<-sum(flbSPO1)
+Infection
 
-fDSM<-SPOIIEDSM-wtDSMmeans
-fitnessDSM<-sum(fDSM)
-fdsmSPO1<-SPOIIEdsmSPO1-wtdsmSPO1means
-fitnessdsmSPO1<-sum(fdsmSPO1)
+>SPO1 (WT): 4 out of 6 samples infected with SPO1 were moderately increased in fitness, meaning a majority of the sporulation gene mutants faired better against SPO1 than WT.The other samples were either slightly increased or slightly decreased. Another trend is that in DSM, mutants are more likely to have an increase in fitness whereas they were less likely in LB.
 
-print(done)
+>sspSPO1 (Mutated virus): 4 out of 6 samples were moderately decreased, meaning this virus was more lethal in these strains than WT SPO1. Samples in DSM were less likely to have a difference in fitness from WT.
 
+>SPP1: All but one sample had the lowest fitness scores between both media. This sample still had a fitness score of less than -100. This virus was much more virulent in sporulation mutants regardless of media.
+
+>Other notes: 
+I just remembered this is from 24 to 48 hours (I think) and checking the OD600 graphs, it seems like the growth curves are a little wonky. Looking back, most of the activity captured by the fitness assay occurs somewhere between 15-25 hours.
+
+
+Strain
+
+>sig F: 
+In LB
+  The sigF strain is more fit than wt without infection, it does moderately better against SPO1, and there is a distinct decrease when infected with sspSPO1 and SPP1
+In DSM
+  sigF seems to grow much better than wt in general, moderately better when infected with SPO1, slightly worse when infected with SPP1, and very slightly better against sspSPO1. 
+
+>sigG:
+In LB
+  sigG does slightly worse/not much different from wt in general, but is much more susceptible to SPP1 infection and moderately more susceptible to sspSPO1.
+In DSM
+  There's not much difference between LB and DSM, so perhaps something about the sigG mutation minimizes changes between media.
+
+
+>SPOIIE
+In LB
+  SPOIIE seems to grow better than wt, which is both unexpected and different from previous experiments. It was more susceptible to SPP1 and sspSPO1
+In DSM
+  Also grows better in DSM, which was also unexpected. Something about DSM made it more resilient to SPO1 infection, which had been seen in the last experiment. It was more susceptible to SPP1 and less susceptible (same as WT) to sspSPO1 than in LB
+
+>Other notes: The last microplate experiment showed a slight decrease (slightly less than 100) in uninfected SPOIIE grown in DSM. This had been expected due to its inability to sporulate, so we hypothesized that the conditions in DSM are unfavorable for SPOIIE. 
+However, in this experiment, we see a definite increase in fitness. Possibly due to the time frame captured by this run?
+  Additionally, it seems most of the low fitness values of SPP1 are attributed by the resistance of wt to SPP1. It doesn't seem to change much (the mutants are still way more susceptible), but something to note?
+
+Analysis
+```{r}
+#
+```
 
 
 Plot data
@@ -335,7 +299,7 @@ ggsave("20250228_Strains.png", plot = d, width = 8, height = 6, dpi = 300)
 print(d)
 
 #plot and sort by infection
-s <- ggplot(summary, aes(x = Time..Hours., y = OD600, colour = interaction(Strain, Media))) +
+s <- ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Media))) +
   theme_minimal() + 
   geom_smooth() +
   labs(title = "OD600 over Time by Treatment", x = "Time", y = "OD600", colour = "Strain") +

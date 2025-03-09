@@ -1,5 +1,5 @@
 ---
-title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
+title: 'Wrangling Data from microplate fluorescence  curve in 96WP'
 author: "El Park"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: pdf_document
@@ -32,8 +32,8 @@ cv <- function(x) (sd(x)/mean(x))*100
 Load and wrangle data
 ```{r}
 #load data
-data<-read.csv("./data/20250211OD600.csv")
-design<-read.csv("./reference/20250211OD600Design.csv", header=FALSE)
+data<-read.csv("./data/20250211fluor.csv")
+design<-read.csv("./reference/20250211fluorDesign.csv", header=FALSE)
 
 #subset design file, "wells" will be strain plus treatment but I can update design file to include a separate column for both
 media<-design[1:8,1:12]
@@ -56,7 +56,7 @@ inf.long <- as.data.frame(pivot_longer(infection, cols = everything(),
 
 # Prepare the FL data for merging
 FL.long <- data %>%
-  pivot_longer(cols = -Time..Hours., names_to="Well", values_to="Fluorescence")
+  pivot_longer(cols = -Time, names_to="Well", values_to="fluor")
 str(FL.long)
 
 #combine
@@ -73,100 +73,98 @@ summary<-FL.long[!apply(FL.long, 1, function(row) any(row=="Blank")), ]
 
 Calculate fitness
 ```{r}
-#subset wt
-wt<-summary %>%
-  filter(grepl("WT", Strain)) %>%
-  select(Time..Hours., Fluorescence, Media, Infection)
-#separate by media and infection (ctrl)
-wtLB<-wt %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., Fluorescence)
-wtDSM<-wt %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., Fluorescence)
-#separate by media and infection (SPO1)
-wtlbSPO1<-wt %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., Fluorescence)
-wtdsmSPO1<-wt %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., Fluorescence)
+# Get unique combinations of Media, Infection, and Strain
+combinations <- summary %>%
+  distinct(Media, Infection, Strain)
 
-#take averages
-wtLBmeans <- wtLB %>%
-  group_by(Time..Hours.) %>%
-  summarise(mean_Fluorescence = mean(Fluorescence))
-wtDSMmeans <- wtDSM %>%
-  group_by(Time..Hours.) %>%
-  summarise(mean_Fluorescence = mean(Fluorescence))
-wtlbSPO1means <- wtlbSPO1 %>%
-  group_by(Time..Hours.) %>%
-  summarise(mean_Fluorescence = mean(Fluorescence))
-wtdsmSPO1means <- wtdsmSPO1 %>%
-  group_by(Time..Hours.) %>%
-  summarise(mean_Fluorescence = mean(Fluorescence))
+# Create data frames for each combination
+for (i in 1:nrow(combinations)) {
+  strain <- combinations$Strain[i]
+  media <- combinations$Media[i]
+  infection <- combinations$Infection[i]
+  
+  vector_name <- paste(strain, media, infection, sep = ".")
+  assign(vector_name, summary %>%
+    filter(Strain == strain, Media == media, Infection == infection) %>%
+    select(Time, fluor))
+}
 
-# Repeat each row n times (n=4 in this specific exp)
-wtLBmeans <-wtLBmeans[rep(1:nrow(wtLBmeans), each = 4),]
-wtDSMmeans <- wtDSMmeans[rep(1:nrow(wtDSMmeans), each = 4),]
-wtlbSPO1means <-wtlbSPO1means[rep(1:nrow(wtlbSPO1means), each = 4),]
-wtdsmSPO1means <- wtdsmSPO1means[rep(1:nrow(wtdsmSPO1means), each = 4),]
+# Calculate the average fluor for each time point for wt strains
+wt_combinations <- combinations %>%
+  filter(grepl("WT", Strain))
 
-#now SPOIIE
-SPOIIE<-summary %>%
-  filter(grepl("SPOIIE", Strain)) %>%
-  select(Time..Hours., Fluorescence, Media, Infection)
-#separate by media and infection (ctrl)
-SPOIIELB<-SPOIIE %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., Fluorescence)
-SPOIIEDSM<-SPOIIE %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("Ctrl", Infection)) %>%
-  select(Time..Hours., Fluorescence)
-#separate by media and infection (SPO1)
-SPOIIElbSPO1<-SPOIIE %>%
-  filter(grepl("LB", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., Fluorescence)
-SPOIIEdsmSPO1<-SPOIIE %>%
-  filter(grepl("DSM", Media)) %>%
-  filter(grepl("SPO1", Infection)) %>%
-  select(Time..Hours., Fluorescence)
+for (i in 1:nrow(wt_combinations)) {
+  media <- wt_combinations$Media[i]
+  infection <- wt_combinations$Infection[i]
+  
+  wt_vector_name <- paste("WT", media, infection, sep = ".")
+  avg_vector_name <- paste("avg", media, infection, sep = ".")
+  
+  avg_vector <- get(wt_vector_name) %>%
+    group_by(Time) %>%
+    summarise(avg_fluor = mean(fluor, na.rm = TRUE)) %>%
+    mutate(avg_fluor = avg_fluor * 3)
+  
+  assign(avg_vector_name, avg_vector)
+}
 
+# Ensure non_wt_combinations is created correctly
+non_wt_combinations <- combinations %>%
+  filter(!grepl("WT", Strain))
 
-print(done)
-```
-If using Fluor to calc fitness
-#subract SPOIIE from WT and then take sum
-fLB<-(SPOIIELB-wtLBmeans)
-fitnessLB<-sum(fLB)
-flbSPO1<-(SPOIIElbSPO1-wtlbSPO1means)
-fitnesslbSPO1<-sum(flbSPO1)
+fitness_list <- list()
 
-fDSM<-SPOIIEDSM-wtDSMmeans
-fitnessDSM<-sum(fDSM)
-fdsmSPO1<-SPOIIEdsmSPO1-wtdsmSPO1means
-fitnessdsmSPO1<-sum(fdsmSPO1)
+for (i in 1:nrow(non_wt_combinations)) {
+  strain <- non_wt_combinations$Strain[i]
+  media <- non_wt_combinations$Media[i]
+  infection <- non_wt_combinations$Infection[i]
+  
+  non_wt_vector_name <- paste(strain, media, infection, sep = ".")
+  avg_vector_name <- paste("avg", media, infection, sep = ".")
+  fitness_vector_name <- paste(media, strain, infection, "fitness", sep = ".")
+  
+  fitness_vector <- get(non_wt_vector_name)$fluor - get(avg_vector_name)$avg_fluor
+  
+  assign(fitness_vector_name, fitness_vector)
+  fitness_list[[fitness_vector_name]] <- fitness_vector
+}
 
-#vector of all the fitness values (Fitness effect of loss of gene)
-pm <-data.frame(
-  treatment_media = c("noninfectedLB", "noninfectedDSM", "infectedLB", "infectedDSM"),
-  fitness = c(fitnessLB, fitnessDSM, fitnesslbSPO1, fitnessdsmSPO1)
+# Sum all fitness vectors into one data frame named pm
+pm <- data.frame(
+  media = character(),
+  strain = character(),
+  infection = character(),
+  fitness_value = numeric()
 )
 
-#fitnessbg
-bg<-ggplot(pm, aes(x = treatment_media, y = fitness)) +
+for (name in names(fitness_list)) {
+  parts <- strsplit(name, "\\.")[[1]]
+  media <- parts[1]
+  strain <- parts[2]
+  infection <- parts[3]
+  fitness_value <- sum(fitness_list[[name]])
+  
+  pm <- rbind(pm, data.frame(media = media, strain = strain, infection = infection, fitness_value = fitness_value))
+}
+
+# Create the media.strain.infection variable manually
+pm$media.strain.infection <- paste(pm$media, pm$strain, pm$infection, sep = ".")
+
+
+# Plot fitness
+plot.new()
+bg <- ggplot(pm, aes(x = media.strain.infection, y = fitness_value)) +
   geom_bar(stat = "identity") +
-  labs(title = "Fitness effects of sporulation mutations", x = "Treatment and Media", y = "Fitness") +
-  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")
-ggsave("20250211_fitness.png", plot = bg, width = 6, height = 4, dpi = 300)
+  labs(title = "Viral fitness effects of host mutations", x = "Media.Strain.Infection", y = "Fitness") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8), # Rotate and adjust size of x-axis labels
+        legend.key.size = unit(1, 'cm'), 
+        legend.position = "right") +
+  scale_y_continuous(breaks = c(pretty(pm$fitness_value), 300)) # Add tick mark at 500
 print(bg)
+
+```
+
+
 
 Plot data
 ```{r}
@@ -179,7 +177,7 @@ plot.new()
 par(mar = c(7, 7, 5, 7))
 
 # Plot all growth over time in one plot, colored by design
-p<-ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Strain, Media, Infection)))+
+p<-ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Strain, Media, Infection)))+
   geom_line() +
   theme_minimal() + geom_smooth()+
   labs(title = "Fluorescence over Time for All Samples", x = "Time", y = "Fluorescence", colour = "Media.Strain.Treatment") +
@@ -189,7 +187,7 @@ ggsave("20250211_all.png", plot = p, width = 10, height = 6, dpi = 300)
 print(p)
 
 #plot and sort by Media
-m<-ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Strain, Infection)))+
+m<-ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Strain, Infection)))+
   #geom_line() + 
   theme_minimal() + geom_smooth()+
   labs(title = "Fluorescence over Time by Media", x = "Time", y = "Fluorescence", colour = "Strain.Treatment") +
@@ -199,7 +197,7 @@ ggsave("20250211_Media.png", plot = m, width = 8, height = 5, dpi = 300)
 print(m)
 
 #plot and sort by treatment
-d<-ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Media, Infection))) +
+d<-ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Media, Infection))) +
   #geom_line() +
   theme_minimal() + geom_smooth()+
   labs(title = "Fluorescence over Time by Strain", x = "Time", y = "Fluorescence", colour = "Media.Infection") +
@@ -209,7 +207,7 @@ ggsave("20250211_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
 print(d)
 
 #plot and sort by infection
-s <- ggplot(summary, aes(x = Time..Hours., y = Fluorescence, colour = interaction(Strain, Media))) +
+s <- ggplot(summary, aes(x = Time, y = fluor, colour = interaction(Strain, Media))) +
   theme_minimal() + 
   geom_smooth() +
   labs(title = "Fluorescence over Time by Treatment", x = "Time", y = "Fluorescence", colour = "Strain") +
