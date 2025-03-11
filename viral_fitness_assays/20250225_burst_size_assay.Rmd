@@ -6,13 +6,6 @@ geometry: margin=2.54cm
 
 
 
-#To calculate burst size:
-
->a.	First calculate the number of initially infected cells Ni = (early timepoint titer BEFORE chloroform treatment) - (early timepoint titer AFTER chloroform treatment). Chloroform treatment before end of the eclipse period results in non-viable infections, so only free phage are counted. Because phages are limited to single infections (by large excess of host cells), number of infected cells is just the total infective centers minus free phages.
-
->b.	Burst size = (average titer of free phages at late timepoints) / Ni
-
-
 ```{r}
 #create vector
 time <- c(5, 10, 20, 30, 40, 50, 60)
@@ -34,4 +27,18 @@ lp <- ggplot(SPO1.bsa_df, aes(x = Time, y = Titer)) +
   labs(title = "Burst Size Assay of SPO1", x = "Time(min)", y = "Viral Titer (PFU/mL)") +
   theme_minimal()
 ggsave("20250225_burst size assay.png", plot = lp, width = 6, height = 4, dpi = 300)
+```
+
+Burst size calc:
+#To calculate burst size:
+
+>a.	First calculate the number of initially infected cells Ni = (early timepoint titer BEFORE chloroform treatment) - (early timepoint titer AFTER chloroform treatment). Chloroform treatment before end of the eclipse period results in non-viable infections, so only free phage are counted. Because phages are limited to single infections (by large excess of host cells), number of infected cells is just the total infective centers minus free phages.
+
+>b.	Burst size = (average titer of free phages at late timepoints) / Ni
+
+```{r}
+Ni<-4.50E+04-2.04E+04
+420000/Ni
+
+
 ```
