@@ -1,17 +1,16 @@
 ---
 title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
 author: "El Park"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
+date: ""
 output: pdf_document
 geometry: margin=2.54cm
 ---
 
-R Setup
-```{r setup}
-rm(list = ls())
-#setwd("./")
-#getwd()
 
+R Setup
+```{r setup, include=FALSE}
+rm(list = ls())
+#make sure to open under project w/in dataWrangling_code
 #install.packages("vegan")
 #install.packages("tidyverse")
 require("png")
@@ -68,94 +67,200 @@ summary<-OD.long[!apply(OD.long, 1, function(row) any(row=="Blank")), ]
 str(OD.long)
 ```
 
-Calculate fitness
+Calculate fitness for ctrls
 ```{r}
 #For LB
-#calculate fitness via filtering ODs for each strain (in LB withou infection) and then takig the sum
-library(dplyr)
-library(ggplot2)
-
-# Filter for LB media and Ctrl infection
-filtered_data <- your_data %>%
+#Filter for LB media and Ctrl infection
+filter.LB<- OD.long %>%
   filter(Media == "LB", Infection == "Ctrl") %>%
   select(Time, OD600, Strain)
 
-# Summarize OD600 for each strain across all time points
-fitness_summary <- filtered_data %>%
+#Summarize OD600 for each strain across all time points
+fitness.sum.LB <- filter.LB %>%
   group_by(Strain) %>%
   summarize(Fitness = sum(OD600, na.rm = TRUE))  # Summing OD600 as a proxy for fitness
 
-# Bar plot of fitness per strain
-ggplot(fitness_summary, aes(x = Strain, y = Fitness, fill = Strain)) +
+# Define the custom order
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")
+
+# Convert Strain to a factor with this order
+fitness.sum.LB$Strain <- factor(fitness.sum.LB$Strain, levels = custom_order)
+
+# Plot
+ggplot(fitness.sum.LB, aes(x = Strain, y = Fitness, fill = Strain)) +
   geom_bar(stat = "identity") +
   theme_minimal() +
-  labs(title = "Strain Fitness in LB Media (Ctrl Infection)", 
+  labs(title = "Strain Fitness in LB Media (Ctrl)", 
        x = "Strain", 
        y = "Fitness (Sum of OD600)") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+#For DSM
+#Filter for LB media and Ctrl infection
+filter.DSM<- OD.long %>%
+  filter(Media == "DSM", Infection == "Ctrl") %>%
+  select(Time, OD600, Strain)
 
+#Summarize OD600 for each strain across all time points
+fitness.sum.DSM <- filter.DSM %>%
+  group_by(Strain) %>%
+  summarize(Fitness = sum(OD600, na.rm = TRUE))  # Summing OD600 as a proxy for fitness
+
+# Convert Strain to a factor with this order
+fitness.sum.DSM$Strain <- factor(fitness.sum.DSM$Strain, levels = custom_order)
+
+# Plot
+ggplot(fitness.sum.DSM, aes(x = Strain, y = Fitness, fill = Strain)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Strain Fitness in DSM Media (Ctrl)", 
+       x = "Strain", 
+       y = "Fitness (Sum of OD600)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+>Results/Interpretations:
+Same trends, lower overall fitness in all strain in DSM except for sigF
+
+Calculate fitness of each strain LB
+```{r}
+# Get unique strains
+strains <- unique(OD.long$Strain)
+
+# Initialize list to store matrices
+strain_matrices <- list()
+
+# Loop through each strain
+for (strain in strains) {
+  # Filter for the current strain and LB media
+  strain_data <- OD.long %>%
+    filter(Media == "LB", Strain == strain) %>%
+    select(Time, Infection, OD600) %>%
+    mutate(OD600 = as.numeric(OD600))  # Ensure OD600 is numeric
+
+  # Reshape data: Time as rows, Infection as columns (handling duplicates)
+  strain_matrix <- strain_data %>%
+    tidyr::pivot_wider(names_from = Infection, values_from = OD600, values_fn = mean)
+
+  # Convert to numeric matrix (remove Time column)
+  strain_matrix <- as.matrix(strain_matrix[, -1, drop = FALSE])  # Drop Time column
+  mode(strain_matrix) <- "numeric"  # Ensure numeric
+  
+  # Store matrix in list
+  strain_matrices[[strain]] <- strain_matrix
+}
+
+# Compute fitness by summing OD600 for each infection condition
+fitness_values <- lapply(strain_matrices, function(mat) {
+  colSums(mat, na.rm = TRUE)  # Sum numeric values
+})
+
+# Convert to data frame for easier analysis
+fitness_df <- do.call(rbind, fitness_values)
+rownames(fitness_df) <- names(fitness_values)
+
+fitness_df_adj <- fitness_df  # Create a copy to store adjusted values
+fitness_df_adj <- sweep(fitness_df, 1, fitness_df[, 3], FUN = "-")
 
 ```
 
 
-
-Results/Interpretations:
-
-Media-Maybe a linear regression?
-
->DSM: 8 samples had an increase in fitness, 4 samples had a decrease. Out of the increases, half of them were moderately increased (>200); out of the decreases, 3 out of 4 were moderately decreased.
-
->LB: 3 samples had an increase in fitness, 9 had a decrease. Out of the increases, all were moderately increased; out of the decreases, 6 were moderately decreased.
-
->Results/Interpretations: Something about DSM increases survivability of mutants? Or maybe this could be due to occlusion of wells from lysis?
-
-
-Infection
-
->SPO1 (WT): 4 out of 6 samples infected with SPO1 were moderately increased in fitness, meaning a majority of the sporulation gene mutants faired better against SPO1 than WT.The other samples were either slightly increased or slightly decreased. Another trend is that in DSM, mutants are more likely to have an increase in fitness whereas they were less likely in LB.
-
->sspSPO1 (Mutated virus): 4 out of 6 samples were moderately decreased, meaning this virus was more lethal in these strains than WT SPO1. Samples in DSM were less likely to have a difference in fitness from WT.
-
->SPP1: All but one sample had the lowest fitness scores between both media. This sample still had a fitness score of less than -100. This virus was much more virulent in sporulation mutants regardless of media.
-
->Other notes: 
-I just remembered this is from 24 to 48 hours (I think) and checking the OD600 graphs, it seems like the growth curves are a little wonky. Looking back, most of the activity captured by the fitness assay occurs somewhere between 15-25 hours.
-
-
-Strain
-
->sig F: 
-In LB
-  The sigF strain is more fit than wt without infection, it does moderately better against SPO1, and there is a distinct decrease when infected with sspSPO1 and SPP1
 In DSM
-  sigF seems to grow much better than wt in general, moderately better when infected with SPO1, slightly worse when infected with SPP1, and very slightly better against sspSPO1. 
+```{r}
+# Initialize list to store matrices
+strain_matrices.d <- list()
 
->sigG:
-In LB
-  sigG does slightly worse/not much different from wt in general, but is much more susceptible to SPP1 infection and moderately more susceptible to sspSPO1.
-In DSM
-  There's not much difference between LB and DSM, so perhaps something about the sigG mutation minimizes changes between media.
+# Loop through each strain
+for (strain in strains) {
+  # Filter for the current strain and LB media
+  strain_data.d <- OD.long %>%
+    filter(Media == "DSM", Strain == strain) %>%
+    select(Time, Infection, OD600) %>%
+    mutate(OD600 = as.numeric(OD600))  # Ensure OD600 is numeric
 
+  # Reshape data: Time as rows, Infection as columns (handling duplicates)
+  strain_matrix.d <- strain_data.d %>%
+    tidyr::pivot_wider(names_from = Infection, values_from = OD600, values_fn = mean)
 
->SPOIIE
-In LB
-  SPOIIE seems to grow better than wt, which is both unexpected and different from previous experiments. It was more susceptible to SPP1 and sspSPO1
-In DSM
-  Also grows better in DSM, which was also unexpected. Something about DSM made it more resilient to SPO1 infection, which had been seen in the last experiment. It was more susceptible to SPP1 and less susceptible (same as WT) to sspSPO1 than in LB
+  # Convert to numeric matrix (remove Time column)
+  strain_matrix.d <- as.matrix(strain_matrix.d[, -1, drop = FALSE])  # Drop Time column
+  mode(strain_matrix.d) <- "numeric"  # Ensure numeric
+  
+  # Store matrix in list
+  strain_matrices.d[[strain]] <- strain_matrix.d
+}
 
->Other notes: The last microplate experiment showed a slight decrease (slightly less than 100) in uninfected SPOIIE grown in DSM. This had been expected due to its inability to sporulate, so we hypothesized that the conditions in DSM are unfavorable for SPOIIE. 
-However, in this experiment, we see a definite increase in fitness. Possibly due to the time frame captured by this run?
-  Additionally, it seems most of the low fitness values of SPP1 are attributed by the resistance of wt to SPP1. It doesn't seem to change much (the mutants are still way more susceptible), but something to note?
+# Compute fitness by summing OD600 for each infection condition
+fitness_values.d <- lapply(strain_matrices.d, function(mat.d) {
+  colSums(mat.d, na.rm = TRUE)  # Sum numeric values
+})
+
+# Convert to data frame for easier analysis
+fitness_df.d <- do.call(rbind, fitness_values.d)
+rownames(fitness_df.d) <- names(fitness_values.d)
+
+# Adjusted fitness values (subtract third column from all other columns)
+fitness_df_adj.d <- fitness_df.d  # Create a copy to store adjusted values
+fitness_df_adj.d <- sweep(fitness_df.d, 1, fitness_df.d[, 3], FUN = "-")
+
+# Output results
+fitness_df_adj.d
+
+```
+
 
 Analysis
 ```{r}
-#
+# Convert row names into a proper column (Strain) before merging
+fitness.LB <- fitness_df_adj %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "Strain")
+
+fitness.DSM <- fitness_df_adj.d %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "Strain")
+
+# Add Media column
+fitness.LB$Media <- "LB"
+fitness.DSM$Media <- "DSM"
+
+# Combine datasets properly
+fitness_combined <- bind_rows(fitness.LB, fitness.DSM)  # bind_rows() prevents row name issues
+
+# Convert row names to a column (Strain)
+fitness_combined$Strain <- as.factor(fitness_combined$Strain)
+
+# Ensure Media, Strain, and Infection are factors
+fitness_combined$Media <- as.factor(fitness_combined$Media)
+fitness_combined$Strain <- as.factor(fitness_combined$Strain)
+
+# Convert to long format while keeping Media
+fitness_long <- fitness_combined %>%
+  pivot_longer(cols = -c(Strain, Media), names_to = "Infection", values_to = "Fitness")
+
+# Ensure Infection is a factor
+fitness_long$Infection <- as.factor(fitness_long$Infection)
+
+#remove ctrl
+#fitness_long<-fitness_long[!apply(fitness_long, 1, function(row) any(row=="Ctrl")), ]
+
+# Run 3-way ANOVA model with Media included
+anova_model <- aov(Fitness ~ Strain * Infection * Media, data = fitness_long)
+summary(anova_model)
+
+# Display ANOVA results
+summary.aov(anova_model)
+
+Anova(anova_model, type = 2)  # Type II ANOVA
+Anova(anova_model, type = 3)  # Type III ANOVA (requires contrasts)
+
+
 ```
 
 
-Plot data
-```{r}
+-Plot data (IGNORE)
+```{r, ignore}
 setwd('C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/output') #for ggsave
 
 # Plot all growth over time in one plot, colored by design
