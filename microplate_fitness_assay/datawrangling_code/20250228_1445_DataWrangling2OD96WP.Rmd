@@ -246,14 +246,7 @@ fitness_long$Infection <- as.factor(fitness_long$Infection)
 #fitness_long<-fitness_long[!apply(fitness_long, 1, function(row) any(row=="Ctrl")), ]
 
 # Run 3-way ANOVA model with Media included
-anova_model <- aov(Fitness ~ Strain * Infection * Media, data = fitness_long)
-summary(anova_model)
 
-# Display ANOVA results
-summary.aov(anova_model)
-
-Anova(anova_model, type = 2)  # Type II ANOVA
-Anova(anova_model, type = 3)  # Type III ANOVA (requires contrasts)
 
 
 ```
@@ -304,5 +297,27 @@ ggsave("20250228_Infection.png", plot = d, width = 6, height = 4, dpi = 300)
 print(s)
 
 ```
+
+```{r}
+od.long.eb <- OD.long
+
+od.long.eb <- od.long.eb %>% group_by(Well, Media, Strain, Infection) %>%
+  summarize(total.OD = sum(OD600, na.rm = TRUE))
+
+int <- aov(total.OD ~ Media * Strain * Infection , data = od.long.eb)
+add <- aov(total.OD ~ Strain + Infection + Media, data = od.long.eb)
+
+summary(add)
+summary(int)
+
+add.first <- anova(add, int)
+
+add.first  ## says int model makes more sense, better fit
+
+
+summary(int)
+```
+
+
 Results:
 >
