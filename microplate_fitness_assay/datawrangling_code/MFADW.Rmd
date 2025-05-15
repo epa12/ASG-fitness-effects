@@ -1,0 +1,61 @@
+---
+title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+
+```{r, include=FALSE} 
+
+#Setup
+source("C:/Users/parke/OneDrive - Indiana University/GitHub/RSetup.R")
+
+```
+
+Load and wrangle data
+```{r}
+#load data, change date
+data<-read.csv("../data/20250311OD600.csv")
+design<-read.csv("../reference/20250311OD600Design.csv", header=FALSE)
+
+source("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/datawrangling_code/Functions/wrangle96WP_med.str.inf.R")
+
+```
+
+Prep Data
+```{r}
+#FEP, Fitness Effects of Phage (subtract Ctrl Infection avgs from corr Strain/Media rows)
+source("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/datawrangling_code/Functions/FEP.R")
+
+#FEM, Fitness effects of Media (subtract LB from DSM of corr Strain/Infection)
+source("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/datawrangling_code/Functions/FEM.R")
+
+#FES, Fitness effects of Strain (subtract avg WT values from each corr Media/Infection rows)
+source("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/datawrangling_code/Functions/FES.R")
+
+```
+
+Analysis
+```{r}
+FEPa <- aov(total.OD ~ Media * Strain * Infection , data = FEP)
+summary(FEPa)
+
+FEMa<-aov(total.OD ~ Strain * Infection , data = FEM)
+summary(FEMa)
+
+FESa <- aov(total.OD ~ Media * Strain * Infection , data = FES)
+summary(FESa)
+
+
+OD.long6<-OD.long[(1:7008),]
+
+#FEP6, Fitness Effects of Phage in 1st 6 hours
+source("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/datawrangling_code/Functions/FEP6.R")
+
+FEP6a <- aov(total.OD ~ Media * Strain * Infection , data = FEP6)
+summary(FEP6a)
+
+```
+

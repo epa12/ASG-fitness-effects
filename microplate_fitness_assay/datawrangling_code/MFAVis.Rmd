@@ -1,0 +1,113 @@
+---
+title: 'Visualizing data from microplate OD600'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+
+Load and data wrangle (may just be easier to load previous MFADW file)
+```{r}
+#load data, change date
+data<-read.csv("../data/20250311OD600.csv")
+design<-read.csv("../reference/20250311OD600Design.csv", header=FALSE)
+
+sem <- function(x){
+  sd(na.omit(x))/sqrt(length(na.omit(x))) 
+  }
+
+FEP6 <- FEP6 %>%
+group_by(Media, Strain, Infection) %>%
+summarize(
+total.OD = sum(total.OD, na.rm = TRUE), # Sum total OD600 for fitness
+SE = sem(total.OD))
+```
+
+Visualize data
+```{r}
+# Order strain categories (if needed)
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")  # Adjust as needed
+
+setwd('../Output')
+#ggsave("20250311_VisLB.png", plot=LB, width = 10, height = 6, dpi = 300)
+#ggsave("20250311_VisDSM.png", plot=DSM, width = 10, height = 6, dpi = 300)
+
+
+#Filter by Media
+FEP6LB<-FEP6%>%
+  filter(grepl("LB", Media))
+FEP6DSM<-FEP6%>%
+  filter(grepl("DSM", Media))
+
+#Box and Whiskers
+BWLB<-ggplot(FEP6LB, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Phage in LB",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("20250311_BWLB.png", plot=BWLB, width = 10, height = 6, dpi = 300)
+BWLB
+
+BWDSM<-ggplot(FEP6DSM, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Phage in DSM",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("20250311_BWDSM.png", plot=BWLB, width = 10, height = 6, dpi = 300)
+BWDSM
+
+#Line plot
+ggplot(FEP6LB, aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  geom_point(size = 3) +  # Dots for each infection
+  geom_errorbar(aes(ymin = total.OD - SE, ymax = total.OD + SE), width = 0.2) + # Standard error bars
+  geom_line() +  # Lines connecting points of the same infection
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections in LB",
+       x = "Strain",
+       y = "Virulence") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   panel.border = element_rect(color = "black", fill = NA, size = 1))
+
+
+ggplot(FEP6DSM, aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  geom_point(size = 3) +  # Dots for each infection
+  geom_errorbar(aes(ymin = total.OD - SE, ymax = total.OD + SE), width = 0.2) + # Standard error bars
+  geom_line() +  # Lines connecting points of the same infection
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections in DSM",
+       x = "Strain",
+       y = "Virulence") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   panel.border = element_rect(color = "black", fill = NA, size = 1))
+
+
+```
+
+Plot OD for ref
+```{r}
+#plot and sort by treatment
+d<-ggplot(OD.long, aes(x = Time, y = OD600, colour = interaction(Media, Infection))) +
+  #geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Strain", x = "Time", y = "OD600", colour = "Media.Infection") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~Strain)
+ggsave("20250311_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
+print(d)
+
+#plot and sort by infection
+s <- ggplot(OD.long, aes(x = Time, y = OD600, colour = interaction(Strain, Media))) +
+  theme_minimal() + 
+  geom_smooth() +
+  labs(title = "OD600 over Time by Treatment", x = "Time", y = "OD600", colour = "Strain") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right") +
+  facet_wrap(~Infection)
+ggsave("20250311_Infection.png", plot = s, width = 6, height = 4, dpi = 300)
+print(s)
+```
+

@@ -1,0 +1,278 @@
+---
+title: 'Wrangling Data from microplate OD600 growth curve in 96WP'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+
+R Setup
+```{r setup, include=FALSE}
+rm(list = ls())
+#make sure to open under project w/in dataWrangling_code
+#install.packages("vegan")
+#install.packages("tidyverse")
+require("png")
+require("dplyr")
+library("tidyverse")
+require("grid")
+require("tibble")
+require("knitr")
+require("extrafont")
+require("ggrepel");
+require("gridExtra")
+require("contrast")
+require("vegan")
+sem <- function(x) sqrt(var(x)/length(x))
+cv <- function(x) (sd(x)/mean(x))*100
+
+```
+
+Load and wrangle data
+```{r}
+#load data
+data<-read.csv("../../data/20250311OD600.csv")
+design<-read.csv("../../reference/20250311OD600Design.csv", header=FALSE)
+
+#subset design file, "wells" will be strain plus treatment but I can update design file to include a separate column for both
+media<-design[1:8,1:12]
+strain<-design[9:16,1:12]
+infection<-design[17:24, 1:12]
+
+
+# Create custom labels
+rows <- LETTERS[1:8]  # A to H
+cols <- 1:12  # 1 to 12
+custom_labels <- unlist(lapply(rows, function(row) paste0(row, cols)))
+
+#convert to long
+med.long <- as.data.frame(pivot_longer(media, cols = everything(),
+                                         names_to = "Well", values_to = "Media"))
+stn.long <- as.data.frame(pivot_longer(strain, cols = everything(),
+                                         names_to = "Well", values_to = "Strain"))
+inf.long <- as.data.frame(pivot_longer(infection, cols = everything(),
+                                         names_to = "Well", values_to = "Infection"))
+OD.long <- data %>%
+  pivot_longer(cols = -Time, names_to="Well", values_to="OD600")
+
+#combine
+OD.long$Media<-rep(med.long$Media, length.out=nrow(OD.long))
+OD.long$Strain<-rep(stn.long$Strain, length.out=nrow(OD.long))
+OD.long$Infection<-rep(inf.long$Infection, length.out=nrow(OD.long))
+
+
+#filter out "Blanks" 
+summary<-OD.long[!apply(OD.long, 1, function(row) any(row=="Blank")), ]
+str(OD.long)
+```
+
+Calculate fitness for ctrls
+```{r}
+#For LB
+#Filter for LB media and Ctrl infection
+filter.LB<- OD.long %>%
+  filter(Media == "LB", Infection == "Ctrl") %>%
+  select(Time, OD600, Strain)
+
+#Summarize OD600 for each strain across all time points
+fitness.sum.LB <- filter.LB %>%
+  group_by(Strain) %>%
+  summarize(Fitness = sum(OD600, na.rm = TRUE))  # Summing OD600 as a proxy for fitness
+
+# Define the custom order
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")
+
+# Convert Strain to a factor with this order
+fitness.sum.LB$Strain <- factor(fitness.sum.LB$Strain, levels = custom_order)
+
+# Plot
+ggplot(fitness.sum.LB, aes(x = Strain, y = Fitness, fill = Strain)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Strain Fitness in LB Media (Ctrl)", 
+       x = "Strain", 
+       y = "Fitness (Sum of OD600)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#For DSM
+#Filter for LB media and Ctrl infection
+filter.DSM<- OD.long %>%
+  filter(Media == "DSM", Infection == "Ctrl") %>%
+  select(Time, OD600, Strain)
+
+#Summarize OD600 for each strain across all time points
+fitness.sum.DSM <- filter.DSM %>%
+  group_by(Strain) %>%
+  summarize(Fitness = sum(OD600, na.rm = TRUE))  # Summing OD600 as a proxy for fitness
+
+# Convert Strain to a factor with this order
+fitness.sum.DSM$Strain <- factor(fitness.sum.DSM$Strain, levels = custom_order)
+
+# Plot
+ggplot(fitness.sum.DSM, aes(x = Strain, y = Fitness, fill = Strain)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Strain Fitness in DSM Media (Ctrl)", 
+       x = "Strain", 
+       y = "Fitness (Sum of OD600)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+>Results/Interpretations:
+Same trends, lower overall fitness in all strain in DSM except for sigF
+
+Calculate fitness of each strain
+```{r}
+od.long <- OD.long %>% group_by(Well, Media, Strain, Infection) %>%
+  summarize(total.OD = sum(OD600, na.rm = TRUE), .groups= "drop")
+
+#anova hates 0's, it wants a control value
+
+```
+
+
+Analysis
+```{r}
+
+
+int <- aov(total.OD ~ Media * Strain * Infection , data = od.long)
+add <- aov(total.OD ~ Strain + Infection + Media, data = od.long)
+
+#add.first <- anova(add, int)
+#add.first  ## says int model makes more sense, better fit
+
+#summary(add)
+summary(int)
+
+```
+
+Visualize data
+```{r}
+# Order strain categories (if needed)
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")  # Adjust as needed
+
+
+od.summary <- od.long %>%
+  group_by(Media, Strain, Infection) %>%
+  summarize(
+    Fitness = sum(total.OD, na.rm = TRUE),  # Sum total OD600 for fitness
+    SE = sd(total.OD, na.rm = TRUE) / sqrt(n())  # Standard error across replicates
+  )
+od.summary$Strain <- factor(od.summary$Strain, levels = custom_order)
+
+od.summaryLB<-od.summary%>%
+  filter(grepl("LB", Media))
+od.summaryDSM<-od.summary%>%
+  filter(grepl("DSM", Media))
+
+# Plot
+LB<-ggplot(od.summaryLB, aes(x = Strain, y = Fitness, color = Infection, group = Infection)) +
+  geom_point(size = 3) +  # Dots for each infection
+  geom_errorbar(aes(ymin = Fitness - SE, ymax = Fitness + SE), width = 0.2) + # Standard error bars
+  geom_line() +  # Lines connecting points of the same infection
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections in LB",
+       x = "Strain",
+       y = "Fitness (Sum of OD600)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   panel.border = element_rect(color = "black", fill = NA, size = 1))
+
+DSM<-ggplot(od.summaryDSM, aes(x = Strain, y = Fitness, color = Infection, group = Infection)) +
+  geom_point(size = 3) +  # Dots for each infection
+  geom_errorbar(aes(ymin = Fitness - SE, ymax = Fitness + SE), width = 0.2) + # Standard error bars
+  geom_line() +  # Lines connecting points of the same infection
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections in DSM",
+       x = "Strain",
+       y = "Fitness (Sum of OD600)") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   panel.border = element_rect(color = "black", fill = NA, size = 1))
+
+setwd('../Output')
+ggsave("20250311_VisLB.png", plot=LB, width = 10, height = 6, dpi = 300)
+ggsave("20250311_VisDSM.png", plot=DSM, width = 10, height = 6, dpi = 300)
+LB
+DSM
+
+#Prep datasets per media
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")
+od.long$Strain <- factor(od.long$Strain, levels = custom_order)
+
+od.longLB<-od.long%>%
+  filter(grepl("LB", Media))
+od.longDSM<-od.long%>%
+  filter(grepl("DSM", Media))
+
+
+# Plot
+All<-ggplot(od.long, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  facet_wrap(~Media)+
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Sporulation Mutants during Infection by Media",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+LBBW<-ggplot(od.longLB, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Sporulation Mutants during Infection in LB",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+DSMBW<-ggplot(od.longDSM, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Sporulation Mutants during Infection in DSM", x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("20250311_BW_ALL.png", plot=All, width = 10, height = 6, dpi = 300)
+ggsave("20250311_BW_LB.png", plot=LBBW, width = 10, height = 6, dpi = 300)
+ggsave("20250311_BW_DSM.png", plot=DSMBW, width = 10, height = 6, dpi = 300)
+
+All
+LBBW
+DSMBW
+
+
+```
+
+
+```{r}
+simp <- aov(total.OD ~ Media * Strain + Media * Infection + Strain * Infection, data = od.long)
+summary(simp)
+plot(int)
+plot(simp)
+
+# Fit a GLM
+glm_model <- glm(total.OD ~ Media * Strain + Media * Infection + Strain * Infection, data = od.long, family = gaussian())
+
+# Visualize the model
+ggplot(od.long, aes(x = Media, y = total.OD, color = Strain)) +
+  geom_point() +
+  geom_smooth(method = "glm", formula = y ~ x, se = FALSE) +
+  facet_wrap(~ Infection) +
+  theme_minimal() +
+  labs(title = "GLM Visualization", x = "Media", y = "Total OD")
+mlm_model <- lmer(total.OD ~ Media * Strain * Infection + (1 | Strain), data = od.long)
+
+library(lme4)
+mlm_model <- lmer(total.OD ~ Media * Strain * Infection + (1 | Well), data = od.long)
+
+# Visualize the model
+install.packages("sjPlot")
+library(sjPlot)
+plot_model(mlm_model, type = "pred", terms = c("Media", "Strain", "Infection"))
+
+length(unique(od.long$Well)) < nrow(od.long)
+mlm_model <- lmer(total.OD ~ Media * Strain * Infection + (1 | Strain), data = od.long)
+mlm_model <- lm(total.OD ~ Media * Strain * Infection, data = od.long)
+mlm_model
+
+plot_model(mlm_model, type = "pred", terms = c("Media", "Strain", "Infection"))
+```
+

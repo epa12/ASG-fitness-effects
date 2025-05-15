@@ -1,8 +1,30 @@
+
 title: 'Data analysis from Burst size assay'
 author: "El Park"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: pdf_document
 geometry: margin=2.54cm
+
+```{r setup, include=FALSE}
+rm(list = ls())
+#make sure to open under project w/in dataWrangling_code
+#install.packages("vegan")
+#install.packages("tidyverse")
+require("png")
+require("dplyr")
+library("tidyverse")
+require("grid")
+require("tibble")
+require("knitr")
+require("extrafont")
+require("ggrepel");
+require("gridExtra")
+require("contrast")
+require("vegan")
+sem <- function(x) sqrt(var(x)/length(x))
+cv <- function(x) (sd(x)/mean(x))*100
+
+```
 
 
 
@@ -22,11 +44,13 @@ colnames(SPO1.bsa) <- c("Time", "Titer")
 SPO1.bsa_df <- as.data.frame(SPO1.bsa)
 
 # Plot the values over time
-lp <- ggplot(SPO1.bsa_df, aes(x = Time, y = Titer)) +
-  geom_line(color = "blue") +
+lp<-ggplot(SPO1.bsa, aes(x = Time, y = Titer)) +
+  geom_line(color="blue") +
   labs(title = "Burst Size Assay of SPO1", x = "Time(min)", y = "Viral Titer (PFU/mL)") +
   theme_minimal()
 ggsave("20250225_burst size assay.png", plot = lp, width = 6, height = 4, dpi = 300)
+lp
+
 ```
 
 Burst size calc:
@@ -39,6 +63,5 @@ Burst size calc:
 ```{r}
 Ni<-4.50E+04-2.04E+04
 420000/Ni
-
 
 ```

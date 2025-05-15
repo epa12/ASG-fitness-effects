@@ -212,112 +212,147 @@ fitness_df_adj.d
 
 Analysis
 ```{r}
-# Convert row names into a proper column (Strain) before merging
-fitness.LB <- fitness_df_adj %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column(var = "Strain")
+od.long <- OD.long
 
-fitness.DSM <- fitness_df_adj.d %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column(var = "Strain")
+od.long <- od.long %>% group_by(Well, Media, Strain, Infection) %>%
+  summarize(total.OD = sum(OD600, na.rm = TRUE), .groups="drop")
 
-# Add Media column
-fitness.LB$Media <- "LB"
-fitness.DSM$Media <- "DSM"
+int <- aov(total.OD ~ Media * Strain * Infection , data = od.long)
+add <- aov(total.OD ~ Strain + Infection + Media, data = od.long)
 
-# Combine datasets properly
-fitness_combined <- bind_rows(fitness.LB, fitness.DSM)  # bind_rows() prevents row name issues
+#add.first <- anova(add, int)
+#add.first  ## says int model makes more sense, better fit
 
-# Convert row names to a column (Strain)
-fitness_combined$Strain <- as.factor(fitness_combined$Strain)
+#summary(add)
+summary(int)
 
-# Ensure Media, Strain, and Infection are factors
-fitness_combined$Media <- as.factor(fitness_combined$Media)
-fitness_combined$Strain <- as.factor(fitness_combined$Strain)
+```
 
-# Convert to long format while keeping Media
-fitness_long <- fitness_combined %>%
-  pivot_longer(cols = -c(Strain, Media), names_to = "Infection", values_to = "Fitness")
+Visualize data
+```{r}
+# Order strain categories (if needed)
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")  # Adjust as needed
 
-# Ensure Infection is a factor
-fitness_long$Infection <- as.factor(fitness_long$Infection)
 
-#remove ctrl
-#fitness_long<-fitness_long[!apply(fitness_long, 1, function(row) any(row=="Ctrl")), ]
+od.summary <- od.long %>%
+  group_by(Media, Strain, Infection) %>%
+  summarize(
+    Fitness = sum(total.OD, na.rm = TRUE),  # Sum total OD600 for fitness
+    SE = sd(total.OD, na.rm = TRUE) / sqrt(n())  # Standard error across replicates
+  )
+od.summary$Strain <- factor(od.summary$Strain, levels = custom_order)
 
-# Run 3-way ANOVA model with Media included
+od.summaryLB<-od.summary%>%
+  filter(grepl("LB", Media))
+od.summaryDSM<-od.summary%>%
+  filter(grepl("DSM", Media))
 
+# Plot
+LB<-ggplot(od.summaryLB, aes(x = Strain, y = Fitness, color = Infection, group = Infection)) +
+  geom_point(size = 3) +  # Dots for each infection
+  geom_errorbar(aes(ymin = Fitness - SE, ymax = Fitness + SE), width = 0.2) + # Standard error bars
+  geom_line() +  # Lines connecting points of the same infection
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections",
+       x = "Strain",
+       y = "Fitness (Sum of OD600)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   panel.border = element_rect(color = "black", fill = NA, size = 1))
+
+DSM<-ggplot(od.summaryDSM, aes(x = Strain, y = Fitness, color = Infection, group = Infection)) +
+  geom_point(size = 3) +  # Dots for each infection
+  geom_errorbar(aes(ymin = Fitness - SE, ymax = Fitness + SE), width = 0.2) + # Standard error bars
+  geom_line() +  # Lines connecting points of the same infection
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections",
+       x = "Strain",
+       y = "Fitness (Sum of OD600)") +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+   panel.border = element_rect(color = "black", fill = NA, size = 1))
+
+setwd('../Output')
+ggsave("20250228_VisLB.png", plot=LB, width = 10, height = 6, dpi = 300)
+ggsave("20250228_VisDSM.png", plot=DSM, width = 10, height = 6, dpi = 300)
+LB
+DSM
+
+#Prep datasets per media
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")
+od.long$Strain <- factor(od.long$Strain, levels = custom_order)
+
+od.longLB<-od.long%>%
+  filter(grepl("LB", Media))
+od.longDSM<-od.long%>%
+  filter(grepl("DSM", Media))
+
+
+# Plot
+All<-ggplot(od.long, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  facet_wrap(~Media)+
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Sporulation Mutants during Infection by Media",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+LBBW<-ggplot(od.longLB, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Sporulation Mutants during Infection in LB",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+DSMBW<-ggplot(od.longDSM, aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  labs(title="Fitness Effects of Sporulation Mutants during Infection in DSM", x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("20250228_BW_ALL.png", plot=All, width = 10, height = 6, dpi = 300)
+ggsave("20250228_BW_LB.png", plot=LBBW, width = 10, height = 6, dpi = 300)
+ggsave("20250228_BW_DSM.png", plot=DSMBW, width = 10, height = 6, dpi = 300)
+
+All
+LBBW
+DSMBW
 
 
 ```
 
-
--Plot data (IGNORE)
-```{r, ignore}
-setwd('C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/output') #for ggsave
-
-# Plot all growth over time in one plot, colored by design
-p<-ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Media, Infection)))+
-  geom_smooth() +
-  theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time for All Samples", x = "Time", y = "OD600", colour = "Media.Strain.Treatment") +
-  theme(legend.key.size = unit(1, 'cm'), legend.position = "right")+
-  facet_wrap(~Strain + Media + Infection)
-ggsave("20250228_all.png", plot = p, width = 10, height = 12, dpi = 300)
-print(p)
-
-#plot and sort by Media
-m<-ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Infection)))+
-  #geom_line() + 
-  theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time by Media", x = "Time", y = "OD600", colour = "Strain.Treatment") +
-  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  facet_wrap(~Media)
-ggsave("20250228_Media.png", plot = m, width = 8, height = 5, dpi = 300)
-print(m)
-
-#plot and sort by treatment
-d<-ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Media, Infection))) +
-  #geom_line() +
-  theme_minimal() + geom_smooth()+
-  labs(title = "OD600 over Time by Strain and Media", x = "Time", y = "OD600", colour = "Media.Infection") +
-  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
-  facet_wrap(~Strain+Media)
-ggsave("20250228_Strains.png", plot = d, width = 8, height = 6, dpi = 300)
-print(d)
-
-#plot and sort by infection
-s <- ggplot(summary, aes(x = Time, y = OD600, colour = interaction(Strain, Media))) +
-  theme_minimal() + 
-  geom_smooth() +
-  labs(title = "OD600 over Time by Treatment", x = "Time", y = "OD600", colour = "Strain") +
-  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right") +
-  facet_wrap(~Infection)
-ggsave("20250228_Infection.png", plot = d, width = 6, height = 4, dpi = 300)
-print(s)
-
-```
 
 ```{r}
-od.long.eb <- OD.long
+simp <- aov(total.OD ~ Media * Strain + Media * Infection + Strain * Infection, data = od.long)
+summary(simp)
+plot(int)
+plot(simp)
 
-od.long.eb <- od.long.eb %>% group_by(Well, Media, Strain, Infection) %>%
-  summarize(total.OD = sum(OD600, na.rm = TRUE))
+# Fit a GLM
+glm_model <- glm(total.OD ~ Media * Strain + Media * Infection + Strain * Infection, data = od.long, family = gaussian())
 
-int <- aov(total.OD ~ Media * Strain * Infection , data = od.long.eb)
-add <- aov(total.OD ~ Strain + Infection + Media, data = od.long.eb)
+# Visualize the model
+ggplot(od.long, aes(x = Media, y = total.OD, color = Strain)) +
+  geom_point() +
+  geom_smooth(method = "glm", formula = y ~ x, se = FALSE) +
+  facet_wrap(~ Infection) +
+  theme_minimal() +
+  labs(title = "GLM Visualization", x = "Media", y = "Total OD")
+mlm_model <- lmer(total.OD ~ Media * Strain * Infection + (1 | Strain), data = od.long)
 
-summary(add)
-summary(int)
+library(lme4)
+mlm_model <- lmer(total.OD ~ Media * Strain * Infection + (1 | Well), data = od.long)
 
-add.first <- anova(add, int)
+# Visualize the model
+install.packages("sjPlot")
+library(sjPlot)
+plot_model(mlm_model, type = "pred", terms = c("Media", "Strain", "Infection"))
 
-add.first  ## says int model makes more sense, better fit
+length(unique(od.long$Well)) < nrow(od.long)
+mlm_model <- lmer(total.OD ~ Media * Strain * Infection + (1 | Strain), data = od.long)
+mlm_model <- lm(total.OD ~ Media * Strain * Infection, data = od.long)
+mlm_model
 
-
-summary(int)
+plot_model(mlm_model, type = "pred", terms = c("Media", "Strain", "Infection"))
 ```
 
-
-Results:
->
