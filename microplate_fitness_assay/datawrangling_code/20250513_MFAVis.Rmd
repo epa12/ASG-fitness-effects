@@ -1,0 +1,118 @@
+---
+title: 'Visualizing data from microplate OD600'
+author: "El Park"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: pdf_document
+geometry: margin=2.54cm
+---
+
+Next thing that needs done: Figure out why there are no error bars or boxes via prev data
+
+Load and data wrangle (may just be easier to load previous MFADW file)
+```{r, include=FALSE}
+#Go load MFADW
+
+```
+
+Visualize data
+```{r}
+# Order strain categories (if needed)
+custom_order <- c("WT", "SPOIIE", "sigF", "sigG")  # Adjust as needed
+
+setwd('../Output')
+
+
+#Box and Whiskers
+BWLB24<-ggplot(subset(FEP24, Media == "LB") %>%
+                mutate(Strain = factor(Strain, levels = custom_order)), 
+              aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors prn
+  labs(title="Susceptibility of Strains to Specific Phage in LB",x = "Strain", y = "Susceptibility", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~Media)
+ggsave("20250513_BWLB_24hr.png", plot=BWLB24, width = 10, height = 6, dpi = 300)
+BWLB24
+
+
+#Line plot
+LPLB24<-ggplot(subset(FEP24, Media == "LB")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  stat_summary(fun = mean, geom = "line") +
+  theme_minimal() +
+  labs(title = "Susceptibility of Strains to Infections in LB",
+       x = "Strain",
+       y = "Susceptibility") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA, size = 1))
+ggsave("20250513_LPLB_24hr.png", plot=LPLB24, width = 10, height = 6, dpi = 300)
+LPLB24
+
+
+```
+
+Plot OD for ref
+```{r}
+setwd('../Output') #for ggsave
+
+#plot and sort by treatment
+d<-ggplot(OD.long, aes(x = Time, y = OD600, colour = interaction(Media, Infection))) +
+  #geom_line() +
+  theme_minimal() + geom_smooth()+
+  labs(title = "OD600 over Time by Strain", x = "Time", y = "OD600", colour = "Media.Infection") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right")+
+  facet_wrap(~Strain)
+ggsave("20250513_Strains.png", plot = d, width = 6, height = 4, dpi = 300)
+print(d)
+
+#plot and sort by infection
+s <- ggplot(OD.long, aes(x = Time, y = OD600, colour = interaction(Strain, Media))) +
+  theme_minimal() + 
+  geom_smooth() +
+  labs(title = "OD600 over Time by Treatment", x = "Time", y = "OD600", colour = "Strain") +
+  theme(legend.key.size = unit(0.5, 'cm'), legend.position = "right") +
+  facet_wrap(~Infection)
+ggsave("20250513_Infection.png", plot = s, width = 6, height = 4, dpi = 300)
+print(s)
+```
+
+For the full length of the experiment:
+```{r}
+setwd('../Output')
+
+
+#Box and Whiskers
+BWLB<-ggplot(subset(FEP, Media == "LB") %>%
+                mutate(Strain = factor(Strain, levels = custom_order)), 
+              aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors prn
+  labs(title="Susceptibility of Strains to Phage in LB",x = "Strain", y = "Susceptibility", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~Media)
+ggsave("20250513_BWLB_48h.png", plot=BWLB, width = 10, height = 6, dpi = 300)
+BWLB
+
+#Line plot
+LPLB<-ggplot(subset(FEP, Media == "LB")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  stat_summary(fun = mean, geom = "line") +
+  theme_minimal() +
+  labs(title = "Susceptibility of Strains to Infections in LB",
+       x = "Strain",
+       y = "Susceptibility") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA, size =  1))
+ggsave("20250513_LPLB.png", plot=LPLB, width = 10, height = 6, dpi = 300)
+LPLB
+
+```
+

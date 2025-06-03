@@ -17,8 +17,8 @@ source("C:/Users/parke/OneDrive - Indiana University/GitHub/RSetup.R")
 Load and wrangle data
 ```{r}
 #load data, change date
-data<-read.csv("../data/20250311OD600.csv")
-design<-read.csv("../reference/20250311OD600Design.csv", header=FALSE)
+data<-read.csv("../data/20250521OD600.csv")
+design<-read.csv("../reference/20250521OD600Design.csv", header=FALSE)
 
 source("C:/Users/parke/OneDrive - Indiana University/GitHub/ASG-fitness-effects/microplate_fitness_assay/datawrangling_code/Functions/wrangle96WP_med.str.inf.R")
 
@@ -29,31 +29,16 @@ Prep Data
 #FEP, Fitness Effects of Phage (subtract Ctrl Infection avgs from corr Strain/Media rows)
 # ctrl avgs from od.long
 ctrl_avg <- od.long %>%
-  filter(Infection == "Ctrl") %>%  # Keep only control rows
+  filter(Infection == "ctrl") %>%  # Keep only control rows
   group_by(Media, Strain) %>%
   summarize(ctrl_avg = mean(total.OD, na.rm = TRUE), .groups = "drop")
 # subtract control average
 FEP <- od.long %>%
   left_join(ctrl_avg, by = c("Media", "Strain")) %>%
-  mutate(total.OD = total.OD - ctrl_avg) %>%
+  mutate(total.OD = ctrl_avg - total.OD) %>%
   select(-ctrl_avg)  # Remove temporary column
 FEP<-FEP%>%  #Fitness effects of Phage
-  filter(!grepl("Ctrl", Infection))
-
-
-#FEM, Fitness effects of Media (subtract LB from DSM of corr Strain/Infection)
-# LB avgs from od.long
-LBavg <- od.long %>%
-  filter(Media == "LB") %>%  # Keep only control rows
-  group_by(Strain, Infection) %>%
-  summarize(LBavg = mean(total.OD, na.rm = TRUE), .groups = "drop")
-# subtract control average
-FEM <- od.long %>%
-  left_join(LBavg, by = c("Strain", "Infection")) %>%
-  mutate(total.OD = total.OD - LBavg) %>%
-  select(-LBavg)  # Remove temporary column
-FEM<-FEM%>%  #Fitness effects of Phage
-  filter(!grepl("LB", Media))
+  filter(!grepl("ctrl", Infection))
 
 
 #FES, Fitness effects of Strain (subtract avg WT values from each corr Media/Infection rows)
@@ -79,59 +64,33 @@ OD.long6 <- OD.long6 %>%
   summarize(total.OD = sum(OD600, na.rm = TRUE), .groups = "drop")
 # ctrl avgs from OD.long6
 ctrl_avg6 <- OD.long6 %>%
-  filter(Infection == "Ctrl") %>%  # Keep only control rows
+  filter(Infection == "ctrl") %>%  # Keep only control rows
   group_by(Media, Strain) %>%
   summarize(ctrl_avg6 = mean(total.OD, na.rm = TRUE), .groups = "drop")
 # subtract control average
 FEP6 <- OD.long6 %>%
   left_join(ctrl_avg6, by = c("Media", "Strain")) %>%
-  mutate(total.OD = total.OD - ctrl_avg6) %>%
+  mutate(total.OD = ctrl_avg6 - total.OD) %>%
   select(-ctrl_avg6)  # Remove temporary column
 FEP6<-FEP6%>%  #Fitness effects of Phage
-  filter(!grepl("Ctrl", Infection))
+  filter(!grepl("ctrl", Infection))
 
-
-#FEP24, Fitness Effects of Phage in 1st 24 hours
-#Isolate 24h post-infection
-OD.long24<-OD.long[(1:27744),]
-OD.long24 <- OD.long24 %>%
-  group_by(Well, Media, Strain, Infection) %>%
-  summarize(total.OD = sum(OD600, na.rm = TRUE), .groups = "drop")
-# ctrl avgs from OD.long24
-ctrl_avg24 <- OD.long24 %>%
-  filter(Infection == "Ctrl") %>%  # Keep only control rows
-  group_by(Media, Strain) %>%
-  summarize(ctrl_avg24 = mean(total.OD, na.rm = TRUE), .groups = "drop")
-# subtract control average
-FEP24 <- OD.long24 %>%
-  left_join(ctrl_avg24, by = c("Media", "Strain")) %>%
-  mutate(total.OD = total.OD - ctrl_avg24) %>%
-  select(-ctrl_avg24)  # Remove temporary column
-FEP24<-FEP24%>%  #Fitness effects of Phage
-  filter(!grepl("Ctrl", Infection))
 ```
 
 Analysis
 ```{r}
 #Infection vs no infection
-FEPa <- aov(total.OD ~ Media * Strain * Infection , data = FEP)
+FEPa <- aov(total.OD ~  Strain * Infection , data = FEP)
 summary(FEPa)
 
-#Media per strain
-FEMa<-aov(total.OD ~ Strain * Infection , data = FEM)
-summary(FEMa)
-
 #Mutant vs WT
-FESa <- aov(total.OD ~ Media * Strain * Infection , data = FES)
+FESa <- aov(total.OD ~  Strain * Infection , data = FES)
 summary(FESa)
 
 #Infection vs no infection just 6 hr
-FEP6a <- aov(total.OD ~ Media * Strain * Infection , data = FEP6)
+FEP6a <- aov(total.OD ~  Strain * Infection , data = FEP6)
 summary(FEP6a)
 
-#Infection vs no infection 24h--is there a diff vs 48h?
-FEP24a <- aov(total.OD ~ Media * Strain * Infection , data = FEP24)
-summary(FEP24a)
 
 ```
 

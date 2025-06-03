@@ -6,22 +6,12 @@ output: pdf_document
 geometry: margin=2.54cm
 ---
 
+Next thing that needs done: Figure out why there are no error bars or boxes via prev data
 
 Load and data wrangle (may just be easier to load previous MFADW file)
-```{r}
-#load data, change date
-data<-read.csv("../data/20250311OD600.csv")
-design<-read.csv("../reference/20250311OD600Design.csv", header=FALSE)
+```{r, include=FALSE}
+#Go load MFADW
 
-sem <- function(x){
-  sd(na.omit(x))/sqrt(length(na.omit(x))) 
-  }
-
-FEP6 <- FEP6 %>%
-group_by(Media, Strain, Infection) %>%
-summarize(
-total.OD = sum(total.OD, na.rm = TRUE), # Sum total OD600 for fitness
-SE = sem(total.OD))
 ```
 
 Visualize data
@@ -30,66 +20,67 @@ Visualize data
 custom_order <- c("WT", "SPOIIE", "sigF", "sigG")  # Adjust as needed
 
 setwd('../Output')
-#ggsave("20250311_VisLB.png", plot=LB, width = 10, height = 6, dpi = 300)
-#ggsave("20250311_VisDSM.png", plot=DSM, width = 10, height = 6, dpi = 300)
 
-
-#Filter by Media
-FEP6LB<-FEP6%>%
-  filter(grepl("LB", Media))
-FEP6DSM<-FEP6%>%
-  filter(grepl("DSM", Media))
 
 #Box and Whiskers
-BWLB<-ggplot(FEP6LB, aes(x = Strain, y = total.OD, fill = Infection)) +
+BWLB6<-ggplot(subset(FEP6, Media == "LB") %>%
+                mutate(Strain = factor(Strain, levels = custom_order)), 
+              aes(x = Strain, y = total.OD, fill = Infection)) +
   geom_boxplot(aes(group = interaction(Strain, Infection)), 
                position = position_dodge(width = 0.8)) +
   theme_minimal() +
-  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors prn
   labs(title="Fitness Effects of Phage in LB",x = "Strain", y = "Fitness", fill = "Phage") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-ggsave("20250311_BWLB.png", plot=BWLB, width = 10, height = 6, dpi = 300)
-BWLB
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~Media)
+ggsave("20250311_BWLB_6hr.png", plot=BWLB6, width = 10, height = 6, dpi = 300)
+BWLB6
 
-BWDSM<-ggplot(FEP6DSM, aes(x = Strain, y = total.OD, fill = Infection)) +
+BWDSM6<-ggplot(subset(FEP6, Media == "DSM")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, fill = Infection)) +
   geom_boxplot(aes(group = interaction(Strain, Infection)), 
                position = position_dodge(width = 0.8)) +
   theme_minimal() +
-  scale_fill_brewer(palette = "Set1") +  # Adjust colors as needed
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors prn
   labs(title="Fitness Effects of Phage in DSM",x = "Strain", y = "Fitness", fill = "Phage") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-ggsave("20250311_BWDSM.png", plot=BWLB, width = 10, height = 6, dpi = 300)
-BWDSM
+ggsave("20250311_BWDSM_6hr.png", plot=BWDSM6, width = 10, height = 6, dpi = 300)
+BWDSM6
 
 #Line plot
-ggplot(FEP6LB, aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
-  geom_point(size = 3) +  # Dots for each infection
-  geom_errorbar(aes(ymin = total.OD - SE, ymax = total.OD + SE), width = 0.2) + # Standard error bars
-  geom_line() +  # Lines connecting points of the same infection
+LPLB6<-ggplot(subset(FEP6, Media == "LB")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  stat_summary(fun = mean, geom = "line") +
   theme_minimal() +
   labs(title = "Fitness Across Strains and Infections in LB",
        x = "Strain",
        y = "Virulence") +
-   theme(axis.text.x = element_text(angle = 45, hjust = 1),
-   panel.border = element_rect(color = "black", fill = NA, size = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA, size = 1))
+ggsave("20250311_LPLB_6hr.png", plot=LPLB6, width = 10, height = 6, dpi = 300)
+LPLB6
 
-
-ggplot(FEP6DSM, aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
-  geom_point(size = 3) +  # Dots for each infection
-  geom_errorbar(aes(ymin = total.OD - SE, ymax = total.OD + SE), width = 0.2) + # Standard error bars
-  geom_line() +  # Lines connecting points of the same infection
+LPDSM6<-ggplot(subset(FEP6, Media == "DSM")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  stat_summary(fun = mean, geom = "line") +
   theme_minimal() +
-  labs(title = "Fitness Across Strains and Infections in DSM",
+  labs(title = "Fitness Across Strains and Infections in LB",
        x = "Strain",
        y = "Virulence") +
-   theme(axis.text.x = element_text(angle = 45, hjust = 1),
-   panel.border = element_rect(color = "black", fill = NA, size = 1))
-
-
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA, size = 1))
+ggsave("20250311_LPDSM_6hr.png", plot=LPDSM6, width = 10, height = 6, dpi = 300)
+LPDSM6
 ```
 
 Plot OD for ref
 ```{r}
+setwd('../Output') #for ggsave
+
 #plot and sort by treatment
 d<-ggplot(OD.long, aes(x = Time, y = OD600, colour = interaction(Media, Infection))) +
   #geom_line() +
@@ -109,5 +100,65 @@ s <- ggplot(OD.long, aes(x = Time, y = OD600, colour = interaction(Strain, Media
   facet_wrap(~Infection)
 ggsave("20250311_Infection.png", plot = s, width = 6, height = 4, dpi = 300)
 print(s)
+```
+
+For the full length of the experiment:
+```{r}
+setwd('../Output')
+
+
+#Box and Whiskers
+BWLB<-ggplot(subset(FEP, Media == "LB") %>%
+                mutate(Strain = factor(Strain, levels = custom_order)), 
+              aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors prn
+  labs(title="Fitness Effects of Phage in LB",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_wrap(~Media)
+ggsave("20250311_BWLB_48h.png", plot=BWLB, width = 10, height = 6, dpi = 300)
+BWLB
+
+BWDSM<-ggplot(subset(FEP, Media == "DSM")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, fill = Infection)) +
+  geom_boxplot(aes(group = interaction(Strain, Infection)), 
+               position = position_dodge(width = 0.8)) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1") +  # Adjust colors prn
+  labs(title="Fitness Effects of Phage in DSM",x = "Strain", y = "Fitness", fill = "Phage") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggsave("20250311.png", plot=BWDSM, width = 10, height = 6, dpi = 300)
+BWDSM
+
+#Line plot
+LPLB<-ggplot(subset(FEP, Media == "LB")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  stat_summary(fun = mean, geom = "line") +
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections in LB",
+       x = "Strain",
+       y = "Virulence") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA, size = 1))
+ggsave("20250311_LPLB.png", plot=LPLB, width = 10, height = 6, dpi = 300)
+LPLB
+
+LPDSM<-ggplot(subset(FEP, Media == "DSM")%>%
+                mutate(Strain = factor(Strain, levels = custom_order)), aes(x = Strain, y = total.OD, color = Infection, group = Infection)) +
+  stat_summary(fun = mean, geom = "point", size = 3) +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2) +
+  stat_summary(fun = mean, geom = "line") +
+  theme_minimal() +
+  labs(title = "Fitness Across Strains and Infections in LB",
+       x = "Strain",
+       y = "Virulence") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.border = element_rect(color = "black", fill = NA, size = 1))
+ggsave("20250311_LPDSM.png", plot=LPDSM, width = 10, height = 6, dpi = 300)
+LPDSM
 ```
 
